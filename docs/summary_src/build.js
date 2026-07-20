@@ -50,9 +50,9 @@ children.push(
   new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 2000 },
     children: [new TextRun({ text: "给 Megatron-LM 等 AI 基础设施仓库造一个「更好的 /claude strict-review」", size: 24, color: GRAY, font: FONT })] }),
   new Paragraph({ alignment: AlignmentType.CENTER,
-    children: [new TextRun({ text: "Rui Zhu · 2026 年 7 月 18 日", size: 24, color: INK, font: FONT })] }),
+    children: [new TextRun({ text: "Rui Zhu · 2026 年 7 月 19 日（第二版）", size: 24, color: INK, font: FONT })] }),
   new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 100 },
-    children: [new TextRun({ text: "数据集 v0.2（已冻结） · 检测器线 RUN2（待执行）", size: 20, color: GRAY, font: FONT })] }),
+    children: [new TextRun({ text: "数据集 v0.2 已冻结 · 检测器 v1 已考试（整体胜 · 北极星负 · v2 方向已明）", size: 20, color: GRAY, font: FONT })] }),
   new Paragraph({ children: [new PageBreak()] }),
 );
 
@@ -65,9 +65,9 @@ const tocItems = [
   ["第 2 章 · 背景：我们要解决什么问题", "AI infra / 性能回归 / 两个现役守门员"],
   ["第 3 章 · 想法的演化", "被否决的方案 → 三条腿架构"],
   ["第 4 章 · 已完成：数据集线", "漏斗 / 案例卡 / 配对 / 协议 / 质量 / 局限"],
-  ["第 5 章 · 正在做：检测器线 RUN2", "两条铁律 / 八个 Stage"],
+  ["第 5 章 · 已完成：检测器线 RUN2 及其结果", "八个 Stage / 成绩单 / 消融真相 / v2 方向"],
   ["第 6 章 · 终极产品", "走一遍未来的一天 / 正面对比 / 诚实边界"],
-  ["第 7 章 · 论文与竞争格局", "novelty 修正 / 三个缺口 / 投稿地图"],
+  ["第 7 章 · 论文与竞争格局（已暂缓）", "novelty 修正 / 三个缺口 / 投稿地图"],
   ["第 8 章 · 工作方式、账本与下一步", ""],
   ["附录 A · 名词速查表", "约 60 个术语"],
   ["附录 B · 关键数字速查表", ""],

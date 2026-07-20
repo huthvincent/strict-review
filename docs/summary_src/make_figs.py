@@ -190,10 +190,10 @@ fig, ax = plt.subplots(figsize=(9, 4.0))
 phases = [
     ("想法与论证", "否决「万类分类器」\n定下三条腿", GREEN, "已完成"),
     ("Phase 0 试点", "48 张人工金标卡\n校准闸门 recall=1.0", GREEN, "已完成"),
-    ("数据集线", "三层漏斗全量扫描\n5,016 卡 / 622 对", GREEN, "已完成"),
-    ("v0.2 冻结", "评测协议钉死\n考卷密封", GREEN, "已完成"),
-    ("检测器线 RUN2", "8 个 Stage\n作业书已打包", AMBER, "待执行机跑"),
-    ("论文＋产品", "人工校准→投稿\n接触 NVIDIA", GRAY_L, "未开始"),
+    ("数据集线", "5,016 卡 / 622 对\nv0.2 冻结", GREEN, "已完成"),
+    ("检测器线 RUN2", "8 Stage 考完\n整体胜 · 北极星负", GREEN, "已完成"),
+    ("消融定向", "leg3 独撑召回\nv2 方向已明", GREEN, "已完成"),
+    ("v2 产品化", "leg3 主干重设计\n人工核验进行中", AMBER, "进行中"),
 ]
 n = len(phases)
 for i, (name, sub, color, status) in enumerate(phases):
@@ -205,11 +205,36 @@ for i, (name, sub, color, status) in enumerate(phases):
     ax.text(x + 0.65, 2.16, name, ha="center", va="center", fontsize=10.5, color=INK, fontweight="bold")
     ax.text(x + 0.65, 1.62, sub, ha="center", va="center", fontsize=7.8, color=INK)
     ax.text(x + 0.65, 0.68, status, ha="center", va="center", fontsize=9.5,
-            color=(GREEN if status == "已完成" else (AMBER if status == "待执行机跑" else GRAY)))
+            color=(GREEN if status == "已完成" else (AMBER if status == "进行中" else GRAY)))
     if i < n - 1:
         ax.add_patch(FancyArrowPatch((x + 1.38, 1.75), (x + 1.52, 1.75), arrowstyle="-|>",
                      mutation_scale=11, color=GRAY, lw=1.1))
 ax.set_xlim(-0.2, n * 1.55); ax.set_ylim(0.3, 2.75); ax.axis("off")
-ax.set_title("项目走到哪了（2026-07-18）", fontsize=14.5, color=INK, pad=10)
+ax.set_title("项目走到哪了（2026-07-19）", fontsize=14.5, color=INK, pad=10)
 save(fig, "f8_roadmap")
+
+# ---------------- F9 对决成绩 ----------------
+import numpy as np
+fig, ax = plt.subplots(figsize=(9, 4.6))
+names = ["strict-review\n（对手）", "裸 Opus", "关键词", "Nova Pro\n（异族）", "检测器 v1\n（冻结版）"]
+overall = [13.1, 12.2, 0.0, 6.5, 18.6]
+regfix = [14.9, 14.9, 0.0, 8.0, 12.3]
+fpr = [17.2, 4.8, 4.6, 23.5, 14.9]
+x = np.arange(len(names)); w = 0.26
+b1 = ax.bar(x - w, overall, w, color=BLUE, label="整体召回@2")
+b2 = ax.bar(x, regfix, w, color=AMBER, label="北极星（回归修复）@2")
+b3 = ax.bar(x + w, fpr, w, color=RED_L, label="误报率（越低越好）")
+for bars in (b1, b2, b3):
+    for b in bars:
+        ax.text(b.get_x() + b.get_width() / 2, b.get_height() + 0.4, f"{b.get_height():.1f}",
+                ha="center", va="bottom", fontsize=8.5, color=INK)
+ax.axhline(18.0, color=GREEN, lw=1.2, ls="--")
+ax.text(1.62, 19.2, "18.0 = 预登记消融（去对抗层）的北极星 —— v2 的可达性证据", fontsize=9, color=GREEN, ha="center", va="bottom")
+ax.set_xticks(x); ax.set_xticklabels(names, fontsize=10)
+ax.set_ylim(0, 27); ax.set_ylabel("%", fontsize=10)
+ax.spines[["top", "right"]].set_visible(False)
+ax.legend(loc="upper left", fontsize=9, frameon=False)
+ax.set_title("同一张密封考卷上的对决（RUN2 实测，判分 κ=0.926）", fontsize=14, color=INK, pad=10)
+save(fig, "f9_showdown")
 print("ALL DONE")
+
