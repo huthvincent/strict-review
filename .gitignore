@@ -1,0 +1,6 @@
+workspace/
+archive/transfer_zips/
+.DS_Store
+~$*
+__pycache__/
+*.pyc

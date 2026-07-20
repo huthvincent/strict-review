@@ -1,0 +1,4 @@
+2026-07-19 (re-frozen, deduped)
+subset = 818 perf-pos + 116 pairs + 954 unique neg = 1888 items
+NOTE: source test.txt had 41 duplicate hard-negative-hotfile lines; deduped in place.
+hotfile negatives = 459 (not 500) after dedup; documented deviation.

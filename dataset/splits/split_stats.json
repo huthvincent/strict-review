@@ -1,0 +1,40 @@
+{
+  "generated": "2026-07-17T16:24:00.678785+00:00",
+  "protocol": "protocol.v1",
+  "cutoff": "2026-01-01",
+  "dev_test_boundary_date": "2026-04-17",
+  "boundary_method": "median author-date of post-cutoff perf-related cards",
+  "counts": {
+    "train": {
+      "cases": 5298,
+      "pairs": 387,
+      "negatives": 14550,
+      "total_lines": 28060
+    },
+    "dev": {
+      "cases": 1232,
+      "pairs": 119,
+      "negatives": 2882,
+      "total_lines": 5587
+    },
+    "test": {
+      "cases": 1207,
+      "pairs": 116,
+      "negatives": 2227,
+      "total_lines": 4447
+    }
+  },
+  "positives_total": 5016,
+  "pairs_total": 622,
+  "negatives_total": 29735,
+  "repo_holdout": {
+    "train_repos": [
+      "vllm",
+      "DeepSpeed",
+      "TransformerEngine"
+    ],
+    "test_repo": "Megatron-LM",
+    "megatron_perf_cards": 847,
+    "nonmegatron_perf_cards": 4169
+  }
+}

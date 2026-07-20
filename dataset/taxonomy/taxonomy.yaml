@@ -1,0 +1,482 @@
+version: taxonomy.v1
+induced_from: 600 cards -> 256 raw -> 74 leaves, enriched 2026-07-18
+n_categories: 11
+n_leaves: 74
+categories:
+  - id: collective-comm
+    name: "Collective & Communication"
+    leaves:
+      - id: redundant-collective
+        name: "Redundant/Duplicate Collective"
+        definition: ""
+        typical_mechanisms: ["same all-reduce called each iteration on unchanged data", "gradient synced twice via wrapper + manual call", "broadcast of constant done per-step", "collective inside loop that could hoist out", "duplicate all-gather for already-replicated tensor"]
+        symptom_tendency: ["throughput", "latency", "gpu-util-or-bubble"]
+        boundary_notes: "Extra/repeated calls that could be eliminated; vs payload-reduction where the call is needed but moves too many bytes."
+      - id: mismatched-collective-config
+        name: "Mismatched Collective Shape/Group/Config"
+        definition: ""
+        typical_mechanisms: ["ranks pass differing shapes/dtypes to all-reduce", "wrong process group handle used", "op reduction type mismatch (sum vs avg)", "world_size assumption differs from actual", "async_op flag inconsistent across ranks"]
+        symptom_tendency: ["hang", "latency", "throughput"]
+        boundary_notes: "Correctness/config disagreement across ranks (often hangs); vs redundant-collective where every call is well-formed but unnecessary."
+      - id: collective-payload-reduction
+        name: "Collective Payload Reduction"
+        definition: ""
+        typical_mechanisms: ["full-precision gradients reduced without fp16/bf16 cast", "no bucketing/fusion of tiny all-reduces", "sending dense tensor where sparse/topk suffices", "un-compressed all-gather of large activations", "reducing padded tensor instead of trimmed"]
+        symptom_tendency: ["throughput", "latency"]
+        boundary_notes: "Call is necessary but bytes-on-wire too high; vs redundant-collective which removes the call entirely."
+      - id: missing-comm-overlap
+        name: "Missing Compute-Comm Overlap"
+        definition: ""
+        typical_mechanisms: ["all-reduce awaited before compute continues", "no async_op/handle.wait() deferral", "single stream for compute and NCCL", "backward pass fully finishes before comm starts", "no gradient bucket overlap during backward"]
+        symptom_tendency: ["gpu-util-or-bubble", "throughput", "latency"]
+        boundary_notes: "Comm serialized against compute (hideable stalls); vs ipc-transport-overhead where the transport itself is slow regardless of overlap."
+      - id: ipc-transport-overhead
+        name: "IPC/Transport Path Overhead"
+        definition: ""
+        typical_mechanisms: ["traffic over TCP/socket instead of NVLink/NCCL", "NCCL falling back to PCIe/SHM path", "host staging copy before send", "small-message latency-bound protocol", "GPUDirect/RDMA not enabled"]
+        symptom_tendency: ["latency", "throughput"]
+        boundary_notes: "Per-byte/per-message transport cost from wrong path; vs rank-placement which is about which ranks talk, not the link mechanism."
+      - id: rank-placement-locality
+        name: "Rank Placement / Comm Locality"
+        definition: ""
+        typical_mechanisms: ["communicating ranks on different nodes/NUMA", "heavy traffic pairs not co-located on same NVLink domain", "tensor/pipeline parallel groups span slow links", "affinity/binding ignores topology", "high-volume peers crossing network boundary"]
+        symptom_tendency: ["latency", "throughput", "gpu-util-or-bubble"]
+        boundary_notes: "Wrong rank-to-hardware mapping forcing traffic onto slow links; vs ipc-transport which is the link/protocol given fixed placement."
+  - id: concurrency-sync
+    name: "Concurrency & Synchronization"
+    leaves:
+      - id: stream-serialization
+        name: "Single-Stream/Over-Broad Serialization"
+        definition: ""
+        typical_mechanisms: ["everything on default stream (stream 0)", "no cudaStreamCreate / torch.cuda.Stream usage", "independent kernels queued back-to-back with no overlap", "single stream serializes copy + compute", "missing multi-stream dispatch for parallel branches"]
+        symptom_tendency: ["throughput", "gpu-util-or-bubble"]
+        boundary_notes: "Missing stream parallelism by omission; defensive-oversync actively inserts syncs/locks that block existing parallelism."
+      - id: defensive-oversync
+        name: "Defensive Over-Synchronization"
+        definition: ""
+        typical_mechanisms: ["cudaStreamSynchronize / torch.cuda.synchronize per iteration", "event.synchronize() after every op", "locks around already-thread-safe ops", "sync inserted 'to be safe' with no real dependency", "flush/barrier in hot loop"]
+        symptom_tendency: ["throughput", "latency", "gpu-util-or-bubble"]
+        boundary_notes: "Unnecessary syncs added out of caution; blocking-d2h-sync syncs because a host value is genuinely read back."
+      - id: blocking-d2h-sync
+        name: "Blocking Device-to-Host Sync"
+        definition: ""
+        typical_mechanisms: [".item() / .cpu() / .numpy() in loop", "tensor.tolist() or float(tensor) on hot path", "print/logging of GPU tensor value", "python if on GPU-scalar condition", "non-pinned memory D2H copy"]
+        symptom_tendency: ["throughput", "latency", "gpu-util-or-bubble"]
+        boundary_notes: "Sync forced by reading a device value to host; host-scalar-loop-work does the arithmetic/looping on host after the pull."
+      - id: host-scalar-loop-work
+        name: "Host-Side Scalar/Loop Work On GPU Tensors"
+        definition: ""
+        typical_mechanisms: ["python for-loop over tensor elements", "per-index indexing tensor[i] in loop", "scalar math on .item() results", "building list then torch.stack", "np.array conversion to iterate"]
+        symptom_tendency: ["throughput", "latency", "gpu-util-or-bubble"]
+        boundary_notes: "Computation runs element-wise on host instead of vectorized; blocking-d2h-sync is the single readback, not the subsequent host loop."
+      - id: gil-held-blocking-call
+        name: "Blocking Call Holding GIL"
+        definition: ""
+        typical_mechanisms: ["long C-call not releasing GIL", "blocking I/O in python thread", "time.sleep/lock.acquire holding GIL", "threads contending instead of true parallelism", "synchronous RPC/network call in worker thread"]
+        symptom_tendency: ["throughput", "latency"]
+        boundary_notes: "Python GIL prevents thread progress during a blocking call; shared-mutable-state-contention is lock contention over data, not GIL serialization."
+      - id: spin-wait-hang
+        name: "Spin-Wait / Counter-Overflow Hang"
+        definition: ""
+        typical_mechanisms: ["busy while-loop polling a flag", "no backoff/yield in wait loop", "counter increment risking overflow/wraparound", "condition never signaled -> infinite wait", "poll on GPU flag without sync"]
+        symptom_tendency: ["hang", "gpu-util-or-bubble", "throughput"]
+        boundary_notes: "Progress stalls on a busy/overflow wait loop; shared-mutable-state-contention slows but eventually completes rather than hanging."
+      - id: shared-mutable-state-contention
+        name: "Shared Mutable State Contention"
+        definition: ""
+        typical_mechanisms: ["global/shared dict updated under lock", "atomic counter hot-spot", "false sharing on adjacent fields", "coarse lock around large critical section", "many workers writing same cache/buffer"]
+        symptom_tendency: ["throughput", "latency"]
+        boundary_notes: "Threads serialize on contended shared data; gil-held-blocking-call serializes via the interpreter lock regardless of data access."
+      - id: sm-margin-reservation
+        name: "SM-Margin Reservation For Overlap"
+        definition: ""
+        typical_mechanisms: ["grid capped below full SM count for overlap", "MPS/CUDA_MPS active-thread-percentage limit", "reserving SMs for comm kernel (NCCL)", "launch bounds throttling occupancy", "persistent-kernel reserving fixed SM slice"]
+        symptom_tendency: ["throughput", "gpu-util-or-bubble"]
+        boundary_notes: "Deliberately caps SM usage for co-scheduling; stream-serialization is unintended serialization, not intentional resource partitioning."
+  - id: host-overhead
+    name: "Host-Side & Dispatch Overhead"
+    leaves:
+      - id: redundant-hot-path-work
+        name: "Redundant Hot-Path Reshape/Alloc/Metadata"
+        definition: ""
+        typical_mechanisms: ["reshape/view/contiguous recomputed every iteration", "tensor/buffer alloc inside step instead of reused", "recomputing shapes/strides/dtype metadata per call", "rebuilding index tensors or masks each forward", "dict/attr lookups resolving same constant repeatedly"]
+        symptom_tendency: ["latency", "throughput", "gpu-util-or-bubble"]
+        boundary_notes: "Repeats every iteration; vs one-time-setup which is init-shaped work (compile, warmup) wrongly placed on the hot path."
+      - id: one-time-setup-on-hot-path
+        name: "One-Time Setup On Hot Path"
+        definition: ""
+        typical_mechanisms: ["lazy compile/JIT trigger fires inside step", "device transfer or pinned-buffer alloc per call", "loading config/weights/tokenizer inside loop", "recompilation from changing shapes/flags each iter", "first-call cache miss repeated due to key churn"]
+        symptom_tendency: ["latency", "compile-or-startup-time", "gpu-util-or-bubble"]
+        boundary_notes: "Cheap-if-cached setup work that should run once; vs redundant-hot-path which is small per-call recompute that has no cacheable one-time form."
+      - id: quadratic-python-structure
+        name: "Quadratic/Churny Python Data Structures"
+        definition: ""
+        typical_mechanisms: ["list.insert(0)/pop(0) or repeated list concat in loop", "O(n) membership test on list instead of set/dict", "string += in loop building large payloads", "nested loop rebuilding collection each pass", "repeated sort/dedup of growing structure"]
+        symptom_tendency: ["latency", "throughput", "memory"]
+        boundary_notes: "Scales super-linearly with data/step count in pure Python; vs redundant-hot-path where per-call cost is constant, just needless."
+      - id: eager-error-string-build
+        name: "Eager Error-Message/Payload Construction"
+        definition: ""
+        typical_mechanisms: ["f-string/format assembled before assert/raise check", "repr()/str() of large tensor for a log message", "logging.debug arg formatted despite disabled level", "exception payload constructed on success path", "expensive validation message built unconditionally"]
+        symptom_tendency: ["latency", "throughput"]
+        boundary_notes: "Wasted work builds messages/payloads for rarely-taken branches; vs quadratic-structure which is real data work, not diagnostic strings."
+      - id: custom-op-dispatch-overhead
+        name: "Op Wrapper/Dispatch Overhead"
+        definition: ""
+        typical_mechanisms: ["many tiny ops each paying dispatcher/pybind cost", "Python wrapper layers per op instead of fused", "autograd/dispatch key lookup dominating kernel time", "*args/**kwargs normalization per call", "per-op device guard/stream setup overhead"]
+        symptom_tendency: ["latency", "throughput", "gpu-util-or-bubble"]
+        boundary_notes: "Fixed framework overhead per op invocation; vs redundant-hot-path where the wasted work is user recompute inside the op, not dispatch machinery."
+  - id: kernel-efficiency
+    name: "Kernel Efficiency"
+    leaves:
+      - id: kernel-fusion
+        name: "Kernel Fusion"
+        definition: ""
+        typical_mechanisms: ["separate elementwise ops each launching own kernel", "materializing intermediate tensors between pointwise ops", "manual epilogue (bias/activation) not folded into matmul", "torch.compile/jit fusion not triggered", "repeated global-memory round-trips for chained ops"]
+        symptom_tendency: ["throughput", "latency", "memory", "gpu-util-or-bubble"]
+        boundary_notes: "Merges multiple existing kernels into one; vs fused-backend-swap which replaces the impl with a prebuilt fused library kernel."
+      - id: fused-backend-swap
+        name: "Swap To Fused/Specialized Backend"
+        definition: ""
+        typical_mechanisms: ["hand-rolled attention instead of FlashAttention/SDPA", "naive layernorm/softmax vs apex/triton fused variant", "generic gemm path instead of cuBLASLt/cutlass fused epilogue", "not routing to available xformers/flash kernel"]
+        symptom_tendency: ["throughput", "latency", "memory"]
+        boundary_notes: "Swaps to an existing specialized/fused backend; vs kernel-fusion which authors the fusion by combining current ops."
+      - id: unfused-transpose-copy
+        name: "Unfused Transpose/Contiguous Copies"
+        definition: ""
+        typical_mechanisms: [".contiguous() / .transpose().contiguous() before op", "explicit permute+copy to satisfy layout", "extra clone to fix strides for library call", "repeated reshape forcing materialization"]
+        symptom_tendency: ["throughput", "latency", "memory", "gpu-util-or-bubble"]
+        boundary_notes: "Wasteful layout/copy kernels specifically; vs kernel-fusion which is about merging compute ops, not eliminating transpose/copy overhead."
+      - id: kernel-occupancy-redesign
+        name: "Under-Parallelized Kernel Redesign"
+        definition: ""
+        typical_mechanisms: ["grid launched with too few blocks/threads", "single-block reduction over large tensor", "serial loop that should be parallel across SMs", "low occupancy from oversized register/smem use", "one-thread-per-row on wide tensors"]
+        symptom_tendency: ["throughput", "gpu-util-or-bubble", "latency"]
+        boundary_notes: "Restructures parallelization scheme itself; vs kernel-config-tuning which only tweaks launch params/tile sizes without changing algorithm."
+      - id: kernel-config-tuning
+        name: "Kernel Launch-Config/Tile Tuning"
+        definition: ""
+        typical_mechanisms: ["hardcoded block_size/tile not tuned per shape", "missing autotune configs", "suboptimal num_warps/num_stages", "wrong vector width / load granularity", "static grid ignoring problem size"]
+        symptom_tendency: ["throughput", "latency", "gpu-util-or-bubble"]
+        boundary_notes: "Same algorithm, tune knobs; vs kernel-occupancy-redesign which rewrites the parallel decomposition."
+      - id: suboptimal-kernel-gate
+        name: "Suboptimal/Over-Restrictive Kernel Gate"
+        definition: ""
+        typical_mechanisms: ["dtype/shape guard blocks fast path unnecessarily", "overly conservative can_use_fast() check", "dispatch falls back on benign condition", "capability check too strict for device"]
+        symptom_tendency: ["throughput", "latency"]
+        boundary_notes: "Fast kernel exists but gating logic rejects it; vs correctness-forces-slow-path where the slow path is a required correctness fallback."
+      - id: kernel-noop-skip
+        name: "Skip Kernel Work For No-Op Config"
+        definition: ""
+        typical_mechanisms: ["running dropout with p=0", "scale/add by identity (mul 1, add 0)", "padding/mask with all-zero pad", "elementwise with identity weight still launched", "no early-return for empty/degenerate input"]
+        symptom_tendency: ["throughput", "latency", "gpu-util-or-bubble"]
+        boundary_notes: "Skip work when config makes op an identity; vs suboptimal-kernel-gate which is about choosing between real kernels, not skipping entirely."
+      - id: algorithmic-compute-reduction
+        name: "Algorithmic Compute Reduction"
+        definition: ""
+        typical_mechanisms: ["O(n^2) where O(n log n) exists", "recomputing values cacheable across steps", "dense compute over sparse/masked regions", "redundant full-matrix op when low-rank suffices", "unnecessary precision or repeated normalization"]
+        symptom_tendency: ["throughput", "latency", "memory"]
+        boundary_notes: "Reduces total FLOPs via better algorithm; vs kernel-noop-skip which drops trivially-identity work, not asymptotic/algorithmic change."
+      - id: correctness-forces-slow-path
+        name: "Correctness/Determinism Forces Slow Path"
+        definition: ""
+        typical_mechanisms: ["deterministic algorithms flag disables fast kernel", "atomics avoided for reproducibility", "fp32 accumulate forced for numerical stability", "fallback for NaN/overflow safety"]
+        symptom_tendency: ["throughput", "latency"]
+        boundary_notes: "Slow path is intentionally required for correctness/determinism; vs suboptimal-kernel-gate where the gate is unnecessarily restrictive and safely removable."
+      - id: dma-access-order-relax
+        name: "Relax DMA Access-Order Constraint"
+        definition: ""
+        typical_mechanisms: ["strict ordered DMA descriptor when unordered ok", "serialized copy queue blocking overlap", "over-synchronized async memcpy", "in-order engine constraint on independent transfers"]
+        symptom_tendency: ["throughput", "latency", "gpu-util-or-bubble"]
+        boundary_notes: "About relaxing transfer ordering constraints; vs unfused-transpose-copy which eliminates redundant copies rather than reordering necessary DMAs."
+  - id: compilation
+    name: "Compilation & Graph Capture"
+    leaves:
+      - id: dynamo-graph-break
+        name: "Graph Break / Compile-Blocking Construct"
+        definition: ""
+        typical_mechanisms: ["torch._dynamo.explain shows graph breaks > 0", "unsupported ops: .item(), .tolist(), data-dependent control flow", "print/logging or Python side-effects inside compiled region", "custom C-extension or unregistered op calls", "try/except or dynamic dict mutation in forward"]
+        symptom_tendency: ["throughput", "latency", "gpu-util-or-bubble", "compile-or-startup-time"]
+        boundary_notes: "Region compiles but fractures into subgraphs; unlike cudagraph-incompatibility, the graph itself is valid—problem is Python fallback boundaries, not capture safety."
+      - id: cudagraph-enablement
+        name: "CUDA-Graph Capture/Replay Enablement"
+        definition: ""
+        typical_mechanisms: ["mode='reduce-overhead' or cudagraph flag not set", "no torch.cuda.CUDAGraph() capture wrapping steady-state loop", "static input buffers / graph replay not used", "per-iter kernel launch overhead dominates on small ops", "eager launch loop despite fixed shapes"]
+        symptom_tendency: ["latency", "throughput", "gpu-util-or-bubble"]
+        boundary_notes: "Capture is possible but simply not turned on (opportunity missed); incompatibility means capture is attempted/desired but blocked by unsafe constructs."
+      - id: cudagraph-incompatibility
+        name: "CUDA-Graph Capture Incompatibility"
+        definition: ""
+        typical_mechanisms: ["dynamic-shaped tensors or varying seq len per step", "CPU-GPU sync (.item/.cpu) inside capture region", "non-static input/output addresses across replays", "malloc/free or stream ops disallowed during capture", "RNG/state mutation not captured deterministically"]
+        symptom_tendency: ["latency", "throughput", "compile-or-startup-time", "hang"]
+        boundary_notes: "Capture attempted but errors/silently falls back due to unsafe ops; enablement is the pure not-turned-on case with no blocking construct."
+      - id: wasted-compilation-work
+        name: "Wasted/Over-Broad Compilation Work"
+        definition: ""
+        typical_mechanisms: ["recompiles on every call (recompile count climbing)", "dynamic=False forcing per-shape specialization", "compile applied to code run once / cold path", "excessive autotuning of trivial kernels", "guard failures trigger repeated retracing"]
+        symptom_tendency: ["compile-or-startup-time", "latency", "memory"]
+        boundary_notes: "Compilation runs but yields little/negative payoff or repeats needlessly; distinct from cache-misconfig where results exist but keys prevent reuse."
+      - id: compile-cache-misconfig
+        name: "Compile-Cache Key/Write Misconfiguration"
+        definition: ""
+        typical_mechanisms: ["TORCHINDUCTOR_CACHE_DIR unset or ephemeral/tmp", "cache key varies by process/env (paths, versions)", "no persistent/remote cache across restarts", "FX/inductor cache disabled or read-only", "cache misses despite identical shapes"]
+        symptom_tendency: ["compile-or-startup-time", "latency"]
+        boundary_notes: "Artifacts would be reusable but key/storage config defeats reuse; wasted-compilation is about compiling the wrong/too-much things, not cache plumbing."
+      - id: warmup-shape-gap
+        name: "JIT Warmup Shape/Coverage Gap"
+        definition: ""
+        typical_mechanisms: ["warmup covers only subset of runtime shapes/dtypes", "first prod request hits uncompiled path (cold latency spike)", "no warmup for batch=1 or max-seq boundary shapes", "dynamic shape buckets not exercised pre-serve", "autotune deferred to serving traffic"]
+        symptom_tendency: ["latency", "compile-or-startup-time", "gpu-util-or-bubble"]
+        boundary_notes: "Compilation config is fine but warmup misses shapes causing runtime JIT stalls; wasted-compilation over-compiles, this under-covers at warmup."
+  - id: memory-management
+    name: "Memory Management"
+    leaves:
+      - id: deferred-free-peak
+        name: "Deferred Free / Retained Buffer"
+        definition: ""
+        typical_mechanisms: ["free() delayed until scope/epoch end", "caching allocator holds freed blocks", "long-lived reference keeps buffer alive", "lazy dealloc on next alloc call", "RAII guard scope wider than needed"]
+        symptom_tendency: ["memory"]
+        boundary_notes: "Buffer IS eventually freed but too late, raising peak; vs leaked-state which is never reclaimed and grows unbounded."
+      - id: memory-leak-unpruned-state
+        name: "Unpruned/Leaked Tracking State"
+        definition: ""
+        typical_mechanisms: ["map/dict entries never evicted", "cache without eviction policy", "handle/id table grows per request", "callback/listener not deregistered", "history list appended forever"]
+        symptom_tendency: ["memory"]
+        boundary_notes: "Monotonic unbounded growth over time/requests; vs deferred-free which bounds at peak and recovers within a cycle."
+      - id: redundant-buffer-copy
+        name: "Redundant Buffer Copy/Zeroing"
+        definition: ""
+        typical_mechanisms: ["memcpy where pointer/view would do", "memset/zero-init before full overwrite", "defensive copy of immutable data", "clone()/contiguous() unnecessarily", "value-passing large struct/tensor"]
+        symptom_tendency: ["latency", "throughput", "memory"]
+        boundary_notes: "Wasted copy/zero work on correctly-sized buffer; vs buffer-sizing where the buffer itself is wrong size/scope/layout."
+      - id: buffer-sizing-layout
+        name: "Wrong-Scope/Oversized/Layout Buffer"
+        definition: ""
+        typical_mechanisms: ["allocation larger than needed", "buffer scoped too broadly (global/static)", "padding/stride wastes memory", "wrong dtype width inflates size", "AoS vs SoA layout mismatch"]
+        symptom_tendency: ["memory", "latency", "throughput"]
+        boundary_notes: "Buffer's size/scope/layout is wrong at allocation; vs redundant-copy where size is right but extra copy/zero work occurs."
+      - id: transient-realloc-spike
+        name: "Transient Realloc/Growth Spike"
+        definition: ""
+        typical_mechanisms: ["vector push without reserve()", "geometric regrowth copies old data", "repeated resize in hot loop", "string concat reallocating", "hash rehash on insert burst"]
+        symptom_tendency: ["latency", "throughput", "memory"]
+        boundary_notes: "Repeated grow-and-copy churn during fill; vs redundant-copy which is a discrete unnecessary copy, not amortized regrowth."
+      - id: shared-workspace-reuse
+        name: "Shared/Reused Workspace Buffer"
+        definition: ""
+        typical_mechanisms: ["scratch buffer serializes concurrent users", "workspace lock contention", "reuse forces false dependency", "single-instance temp across threads/streams", "workspace resized per-op churn"]
+        symptom_tendency: ["gpu-util-or-bubble", "throughput", "latency"]
+        boundary_notes: "Correct reuse but shared instance serializes/contends; vs allocator-config which is pool tuning, not a specific shared buffer."
+      - id: allocator-config
+        name: "Allocator/Memory-Pool Configuration"
+        definition: ""
+        typical_mechanisms: ["arena/pool size misconfigured", "fragmentation from mixed block sizes", "no huge-page/pinned config", "default malloc vs jemalloc/tcmalloc", "cache split thresholds wrong"]
+        symptom_tendency: ["memory", "latency", "throughput", "startup-time"]
+        boundary_notes: "System/pool-level tuning affecting all allocs; vs shared-workspace which is one specific reused buffer causing contention."
+      - id: uvm-managed-pagefault
+        name: "UVM/Managed-Memory Page-Fault Overhead"
+        definition: ""
+        typical_mechanisms: ["cudaMallocManaged migration faults", "no prefetch/advise hints", "host<->device page thrashing", "oversubscription eviction faults", "fault-driven on-demand paging in kernel"]
+        symptom_tendency: ["latency", "gpu-util-or-bubble", "throughput"]
+        boundary_notes: "Managed-memory page migration/fault overhead specifically; vs allocator-config which is pool sizing, not on-demand paging stalls."
+  - id: memory-footprint
+    name: "Memory Footprint Reduction"
+    leaves:
+      - id: activation-recompute
+        name: "Activation Recomputation/Checkpointing"
+        definition: ""
+        typical_mechanisms: ["torch.utils.checkpoint.checkpoint wrapping", "use_reentrant flag toggling", "recompute vs stash policy per layer", "selective activation checkpointing on attention blocks", "recomputed forward in backward pass"]
+        symptom_tendency: ["memory", "throughput", "latency"]
+        boundary_notes: "Trades compute to drop stored activations; unlike offload it recomputes rather than moving tensors to another device/host."
+      - id: offload-management
+        name: "Activation/Weight/KV Offload Management"
+        definition: ""
+        typical_mechanisms: ["cudaMemcpyAsync to/from pinned host memory", "CPU offload hooks on params/optimizer state", "KV cache paged to host/NVMe", "prefetch/staging streams for weights", "swap-in/swap-out scheduling"]
+        symptom_tendency: ["memory", "throughput", "latency", "gpu-util-or-bubble"]
+        boundary_notes: "Moves tensors across device/host boundary to reclaim VRAM; unlike recompute it preserves data, incurring transfer bubbles not extra FLOPs."
+      - id: low-precision-state
+        name: "Low-Precision State Storage"
+        definition: ""
+        typical_mechanisms: ["fp16/bf16/fp8 optimizer moments", "8-bit Adam quantized state", "master weights in reduced precision", "quantized KV cache dtype", "block-wise quantization of state"]
+        symptom_tendency: ["memory", "throughput", "compile-or-startup-time"]
+        boundary_notes: "Shrinks resident tensors by narrowing dtype; unlike skip-saved-tensor it keeps the tensor but stores fewer bits per element."
+      - id: skip-saved-tensor-backward
+        name: "Skip Unneeded Saved-For-Backward Tensor"
+        definition: ""
+        typical_mechanisms: ["ctx.save_for_backward pruning", "detach() on unused intermediates", "no_grad on branches", "custom autograd.Function dropping stash", "avoid saving recomputable inputs"]
+        symptom_tendency: ["memory", "throughput"]
+        boundary_notes: "Eliminates unnecessary autograd stash entirely; unlike recompute nothing is recomputed—tensor was simply not needed for gradients."
+      - id: meta-device-init
+        name: "Meta-Device / Deferred Parameter Init"
+        definition: ""
+        typical_mechanisms: ["torch.device('meta') param allocation", "deferred init / materialize on shard", "empty_weights context manager", "lazy module reset_parameters", "sharded load without full CPU copy"]
+        symptom_tendency: ["memory", "compile-or-startup-time"]
+        boundary_notes: "Avoids allocating full params at init/load time; unlike offload the tensor never fully materializes on any single device."
+  - id: parallelism-scheduling
+    name: "Parallelism & Scheduling"
+    leaves:
+      - id: reshard-tradeoff
+        name: "Reshard/Sharding Memory-Comm Tradeoff"
+        definition: ""
+        typical_mechanisms: ["reshard_after_forward=True forcing re-gather in backward", "all-gather repeated per microbatch instead of cached", "sharding degree chosen to minimize memory ignoring comm cost", "unnecessary full-parameter materialization then re-shard", "mixed shard/replicate policy causing extra collectives"]
+        symptom_tendency: ["throughput", "memory", "gpu-util-or-bubble"]
+        boundary_notes: "About the memory-vs-comm knob choice itself; sibling fsdp-zero-pipeline-break is a broken prefetch/release code path, not a tuning tradeoff."
+      - id: fsdp-zero-pipeline-break
+        name: "FSDP/ZeRO Prefetch/Release Path Break"
+        definition: ""
+        typical_mechanisms: ["prefetch hook not firing (BACKWARD_PRE disabled)", "explicit unshard() before all-gather completes", "param free/release happening before use, forcing re-gather", "stream sync stalling overlap of comm and compute", "hook ordering broken by custom autograd function"]
+        symptom_tendency: ["throughput", "gpu-util-or-bubble", "latency"]
+        boundary_notes: "Broken overlap/prefetch mechanics vs reshard-tradeoff which is a deliberate but suboptimal sharding-policy choice."
+      - id: pipeline-stage-imbalance
+        name: "Pipeline Stage Layer Imbalance"
+        definition: ""
+        typical_mechanisms: ["layers split evenly by count not FLOPs/params", "one stage holds embedding+lm_head, others thin", "uneven activation memory across stages", "microbatch count too low to hide bubble", "heterogeneous layer types on same stage"]
+        symptom_tendency: ["throughput", "gpu-util-or-bubble", "memory"]
+        boundary_notes: "Static per-stage work skew in pipeline parallel; scheduler-work-distribution is dynamic task-binning, eplb is expert-routing skew."
+      - id: eplb-issues
+        name: "Expert-Parallel Load-Balancing Defects"
+        definition: ""
+        typical_mechanisms: ["router sending tokens to few hot experts", "capacity_factor drops causing token overflow/drops", "no auxiliary load-balance loss", "all-to-all dominated by straggler expert", "expert placement ignores per-device load"]
+        symptom_tendency: ["throughput", "gpu-util-or-bubble", "latency"]
+        boundary_notes: "Skew from MoE token routing across experts; pipeline-stage-imbalance is fixed layer partition, not data-dependent expert load."
+      - id: scheduler-work-distribution
+        name: "Conservative Scheduler / Poor Work Binning"
+        definition: ""
+        typical_mechanisms: ["coarse chunk size leaving cores idle", "static schedule where dynamic needed (or vice versa)", "single-threaded dispatch bottleneck", "poor work-stealing / no load rebalancing", "tasks binned larger than granularity of variance"]
+        symptom_tendency: ["throughput", "gpu-util-or-bubble", "latency"]
+        boundary_notes: "Runtime task binning/dispatch inefficiency; pipeline-stage-imbalance is a fixed partition and cpu-affinity-numa is placement/binding."
+      - id: cpu-affinity-numa
+        name: "CPU Affinity / NUMA Binding"
+        definition: ""
+        typical_mechanisms: ["threads migrating across sockets/cores", "memory allocated on remote NUMA node", "no numactl/taskset pinning of workers", "dataloader threads oversubscribing cores", "GPU-to-NIC/CPU affinity mismatch"]
+        symptom_tendency: ["throughput", "latency", "gpu-util-or-bubble"]
+        boundary_notes: "Physical placement/binding of threads and memory; scheduler-work-distribution concerns how work is split, not where it runs."
+  - id: io-startup
+    name: "I/O, Loading & Startup"
+    leaves:
+      - id: serial-io
+        name: "Serialized/Single-Rank/GIL-Bound I/O"
+        definition: ""
+        typical_mechanisms: ["single-threaded read loop / no ThreadPool for file reads", "GIL-held Python decode/parse blocking other threads", "rank-0 reads then broadcasts instead of parallel reads", "torch.load / json.load on main thread per-shard", "no prefetch; sequential open()/read()/close() per file"]
+        symptom_tendency: ["latency", "compile-or-startup-time", "gpu-util-or-bubble"]
+        boundary_notes: "Bottleneck is serialization of the I/O itself; slow-fs-path blames the storage medium/path, not lack of parallelism."
+      - id: async-io-overlap
+        name: "Async I/O Overlap For Offload/Checkpoint"
+        definition: ""
+        typical_mechanisms: ["checkpoint/offload write not overlapped with compute (blocking save)", "no CUDA stream / separate thread for D2H offload copies", "torch.save on critical path stalls training step", "missing double-buffering for offloaded tensors", "synchronous fsync/flush inside step loop"]
+        symptom_tendency: ["throughput", "gpu-util-or-bubble", "latency"]
+        boundary_notes: "Steady-state offload/checkpoint overlap during training; serial-io is about startup/load-side parallelism, not overlapping ongoing writes."
+      - id: slow-fs-path
+        name: "Slow Filesystem / Bounce-Buffer Path"
+        definition: ""
+        typical_mechanisms: ["reads from NFS/object-store instead of local SSD/tmpfs", "extra memcpy through bounce buffer (non-pinned/staging)", "no mmap; full-file copy into userspace", "small block/read size causing many syscalls", "network FS metadata stat storms"]
+        symptom_tendency: ["latency", "compile-or-startup-time", "throughput"]
+        boundary_notes: "Medium/path is slow even if fully parallel; serial-io would be fast on same path if parallelized."
+      - id: weight-load-strategy
+        name: "Weight-Load Strategy/Format"
+        definition: ""
+        typical_mechanisms: ["pickle/torch checkpoint instead of safetensors/mmap zero-copy", "full dtype upcast on load then downcast", "loading full state_dict to CPU before sharding", "no lazy/streaming tensor materialization", "per-tensor CPU->GPU copies without batching"]
+        symptom_tendency: ["compile-or-startup-time", "memory", "latency"]
+        boundary_notes: "About format/deserialization choice; slow-fs-path is where bytes live, weight-transfer-sync is how tensors move to devices."
+      - id: redundant-load-startup-work
+        name: "Redundant Load-Time/Startup Work"
+        definition: ""
+        typical_mechanisms: ["every rank re-parses/re-loads same weights independently", "repeated tokenizer/config init or recompute of derived tables", "warmup/graph capture redone per worker without cache", "no on-disk cache reuse across restarts", "duplicate validation/checksum passes over weights"]
+        symptom_tendency: ["compile-or-startup-time", "memory"]
+        boundary_notes: "Wasted duplicate work that could be cached/shared; weight-load-strategy is inefficiency of a single necessary load."
+      - id: process-launch-overhead
+        name: "Process Launch/Bootstrap Overhead"
+        definition: ""
+        typical_mechanisms: ["heavy imports at module top-level (torch, CUDA init) per process", "torchrun/spawn fork storms; slow rendezvous", "CUDA context creation and JIT/PTX compile per worker", "env/dependency resolution on each launch", "serial worker startup instead of parallel spawn"]
+        symptom_tendency: ["compile-or-startup-time", "hang"]
+        boundary_notes: "Cost of spinning up processes/contexts before any weights load; redundant-load is duplicated data work after processes exist."
+      - id: weight-transfer-sync
+        name: "Pipelined/Chunked Weight Transfer & Sync"
+        definition: ""
+        typical_mechanisms: ["no chunking/pipelining of host->device weight copies", "cudaDeviceSynchronize/barrier per shard transfer", "broadcast/scatter of weights without overlap of copy+comm", "non-pinned host memory forcing sync copies", "collective sync stalls waiting on straggler rank"]
+        symptom_tendency: ["latency", "gpu-util-or-bubble", "compile-or-startup-time"]
+        boundary_notes: "Concerns moving/syncing tensors across devices/ranks; weight-load-strategy concerns reading/deserializing bytes from storage."
+  - id: inference-serving
+    name: "Inference & Serving Strategy"
+    leaves:
+      - id: prefix-state-caching
+        name: "Prefix/State Caching Reuse"
+        definition: ""
+        typical_mechanisms: ["hash/radix lookup on token prefix miss", "recompute KV instead of reusing cached blocks", "cache eviction thrashing under high concurrency", "no block sharing across sibling requests", "prefix match granularity too coarse (per-request)"]
+        symptom_tendency: ["throughput", "latency", "memory"]
+        boundary_notes: "Reuses already-computed KV across requests; kv-cache-capacity is about sizing/holding blocks, not matching/reusing prior prefixes."
+      - id: prefill-decode-kernel-split
+        name: "Prefill/Decode & Dense/Sparse Path Split"
+        definition: ""
+        typical_mechanisms: ["prefill and decode share same kernel/batch config", "no chunked prefill causing decode stalls", "dense kernel used on sparse/MoE path", "batch mixes prefill+decode hurting decode latency", "wrong tile/block size for decode's small M dim"]
+        symptom_tendency: ["throughput", "latency", "gpu-util-or-bubble"]
+        boundary_notes: "About selecting the right kernel/path per phase; sparse-layer-update is about skipping/deferring layer compute, not phase-specific kernel dispatch."
+      - id: speculative-decoding
+        name: "Speculative Decoding Strategy"
+        definition: ""
+        typical_mechanisms: ["draft model too large for its acceptance rate", "low acceptance rate wasting verify passes", "speculation length not tuned to workload", "verify batch bubble waiting on draft", "rollback cost dominates on rejection"]
+        symptom_tendency: ["latency", "throughput", "gpu-util-or-bubble"]
+        boundary_notes: "Draft-then-verify token generation; unlike sparse-layer-update it produces speculative tokens, not skipped layers within a single forward."
+      - id: encoder-execution-mode
+        name: "Multimodal Encoder Execution Mode"
+        definition: ""
+        typical_mechanisms: ["image/audio encoder run inline blocking LLM decode", "no batching of encoder across requests", "encoder not offloaded to separate stream/worker", "redundant re-encode of cached media", "sync host wait on encoder output"]
+        symptom_tendency: ["latency", "throughput", "gpu-util-or-bubble"]
+        boundary_notes: "Concerns where/how multimodal encoder runs vs decode; async-output-overlap is about output D2H/serialization, not upstream encoder scheduling."
+      - id: async-output-overlap
+        name: "Async Output D2H / Delta Serialization"
+        definition: ""
+        typical_mechanisms: ["synchronous D2H copy of logits/tokens blocking next step", "no overlap of serialization with compute", "full-tensor copy instead of delta", "detokenize on critical path", "single stream serializes copy and kernel"]
+        symptom_tendency: ["latency", "throughput", "gpu-util-or-bubble"]
+        boundary_notes: "Downstream output copy/serialize overlap; encoder-execution-mode targets input-side encoder scheduling, not result transfer back to host."
+      - id: kv-cache-capacity
+        name: "KV/Cache Capacity & Hold Tuning"
+        definition: ""
+        typical_mechanisms: ["max-num-seqs/block count under-provisioned", "preemption/swapping under memory pressure", "over-reserved KV blocks wasting VRAM", "gpu-memory-utilization set too low/high", "long context holds blocks starving new requests"]
+        symptom_tendency: ["throughput", "memory", "latency"]
+        boundary_notes: "Sizing/holding of KV pool and admission; prefix-state-caching is about reusing/matching cached content, not total capacity allocation."
+      - id: sparse-layer-update
+        name: "Sparse/Skipped Layer Update Technique"
+        definition: ""
+        typical_mechanisms: ["recomputing layers eligible for skip", "MoE routing recomputes all experts", "layer-skip threshold mistuned", "no reuse of prior-step hidden states", "gate/mask evaluated but full dense path still run"]
+        symptom_tendency: ["throughput", "latency", "gpu-util-or-bubble"]
+        boundary_notes: "Skips/defers layer or expert compute within a forward; prefill-decode-kernel-split picks kernels per phase without skipping layer work."
+  - id: config-observability
+    name: "Configuration & Observability"
+    leaves:
+      - id: config-toggle-perf-feature
+        name: "Config Default Toggle Of Perf Feature"
+        definition: ""
+        typical_mechanisms: ["default flag value disables fused kernel / cudagraph / flash-attn path", "env var unset falls back to reference impl", "config schema default=False for perf-critical opt", "version bump silently flips default", "feature gated behind experimental flag not enabled in prod"]
+        symptom_tendency: ["throughput", "latency", "gpu-util-or-bubble"]
+        boundary_notes: "Static config/default value chooses slow path; vs boolean-guard-misfire where runtime condition wrongly routes despite feature enabled."
+      - id: boolean-guard-misfire
+        name: "Boolean Guard Misfires Fast Path"
+        definition: ""
+        typical_mechanisms: ["if-condition evaluates wrong due to dtype/None/truthiness", "`and`/`or` precedence disables fast path", "shape or capability check overly strict", "cached flag stale after state change", "guard checks wrong tensor/attribute"]
+        symptom_tendency: ["throughput", "latency", "gpu-util-or-bubble"]
+        boundary_notes: "Runtime predicate incorrectly excludes fast path; vs config-toggle where the default value itself, not logic, is wrong."
+      - id: batch-composition-mismatch
+        name: "Batch-Composition Assumption Mismatch"
+        definition: ""
+        typical_mechanisms: ["kernel assumes uniform seqlen but batch is ragged", "padding to max blows up FLOPs", "mixed request types break bucketing", "assumed sorted/aligned batch not enforced", "cudagraph captured for wrong batch shape triggers recapture"]
+        symptom_tendency: ["throughput", "gpu-util-or-bubble", "memory"]
+        boundary_notes: "Wrong assumption about batch contents/shape distribution; vs wrong-index-dtype where a scalar dtype, not batch layout, causes the stall."
+      - id: wrong-index-dtype-hang
+        name: "Wrong Index Dtype Hang"
+        definition: ""
+        typical_mechanisms: ["int32 vs int64 index overflow/wraparound", "index tensor on wrong device forces sync", "gather/scatter dtype mismatch triggers fallback loop", "implicit host-side conversion per element", "bool used where int index expected"]
+        symptom_tendency: ["hang", "latency", "gpu-util-or-bubble"]
+        boundary_notes: "Scalar index dtype/device causes stall or sync; vs batch-composition which is about batch shape/content assumptions."
+      - id: failure-detection-gap
+        name: "Subprocess/Startup Failure Detection Gap"
+        definition: ""
+        typical_mechanisms: ["subprocess crash unnoticed, parent waits on dead worker", "missing exit-code / heartbeat check", "swallowed exception during init leaves system idle", "no timeout on startup barrier / rendezvous", "silent CUDA init failure falls back to CPU"]
+        symptom_tendency: ["hang", "compile-or-startup-time", "throughput"]
+        boundary_notes: "Observability gap hides a failed component causing waits; vs profiling-accounting which is about measurement/reporting inaccuracy, not missed failures."
+      - id: profiling-accounting-fix
+        name: "Profiling/Memory Accounting Fix"
+        definition: ""
+        typical_mechanisms: ["memory counter double-counts or omits allocations", "profiler misattributes time to wrong op", "cache/reserved vs allocated confusion", "async op timing measured without sync", "peak-memory estimate drives wrong batch sizing"]
+        symptom_tendency: ["memory", "throughput", "latency"]
+        boundary_notes: "Instrumentation/accounting is wrong (misleads tuning); vs failure-detection-gap which misses actual component failures rather than mis-measuring."

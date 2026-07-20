@@ -1,0 +1,19 @@
+{
+  "version": "detector_v1",
+  "leg2_k": 5,
+  "leg2_max_turns": 4,
+  "confidence_floor": 0.45,
+  "budget": 2,
+  "adversarial": true,
+  "prompts": {
+    "leg2": "leg2 inline",
+    "leg3": "leg3 inline",
+    "adversarial": "adversarial_verify.v1"
+  },
+  "rules": "ruleset.v1/kept.jsonl",
+  "_note": "FROZEN 2026-07-19 (detector-v1-frozen). Dev-tuned: verify_legs=[leg2] (leg1 rules + leg3 routes bypass refuter); leg3_conf_gate=0 chosen over 0.7 (gate=0.7 cut recall 21.3%->10.7% for FPR 12%->4%; recall preserved with leg3 full routing = NVIDIA recipe value). Dev_tune (n=250 stratified): recall@2 21.3% (high20/med22.5/low27.5/pair13.3), benign FPR 12%. Adversarial before/after: 25.3%/19% -> 21.3%/12%. NO CHANGES past this point.",
+  "verify_legs": [
+    "leg2"
+  ],
+  "leg3_conf_gate": 0.0
+}

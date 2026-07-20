@@ -1,0 +1,1076 @@
+{
+  "redundant-collective": {
+    "category": "collective-comm",
+    "recipe": "gpt-perf",
+    "config_hint": "multi-node TP/PP; watch all-reduce/all-gather time",
+    "n_train_cases": 68,
+    "top_parallelism": [
+      "MoE with data-parallel (DP>1); affected path uses tp_dp_cp group; CP relevant",
+      "multi-rank distributed (any world_size > 1); collective barrier over default process group",
+      "tensor-parallel (TP>1); sequence-parallel path also touched"
+    ],
+    "top_dtype": [
+      "fp8 mixed precision (aggregate collectives explicitly noted for fp8)",
+      "fp8 (TE Float8Tensor stored as uint8) mixed with bf16"
+    ]
+  },
+  "mismatched-collective-config": {
+    "category": "collective-comm",
+    "recipe": "gpt-perf",
+    "config_hint": "multi-node TP/PP; watch all-reduce/all-gather time",
+    "n_train_cases": 55,
+    "top_parallelism": [
+      "multi-node data/model parallel (global world size > single-node GPU count)",
+      "Megatron-FSDP (sharded data parallel with reduce-scatter grad reduction)",
+      "distributed optimizer with DP+CP; sharded main_params unevenly distributed across ranks"
+    ],
+    "top_dtype": [
+      "bf16 (main_param path)",
+      ">=16-bit precision (params/grads)"
+    ]
+  },
+  "collective-payload-reduction": {
+    "category": "collective-comm",
+    "recipe": "gpt-perf",
+    "config_hint": "multi-node TP/PP; watch all-reduce/all-gather time",
+    "n_train_cases": 75,
+    "top_parallelism": [
+      "any distributed run (memory pressure scales with world_size on rank 0)",
+      "FSDP2 (torch FSDP2) distributed data parallel",
+      "custom FSDP (data_parallel_sharding_strategy=optim_grads_params), overlap_param_gather"
+    ],
+    "top_dtype": [
+      "fp8 param-gather disabled -> bf16 all-gather",
+      "fp8 mixed precision (aggregate collectives specifically noted for fp8)"
+    ]
+  },
+  "missing-comm-overlap": {
+    "category": "collective-comm",
+    "recipe": "gpt-perf",
+    "config_hint": "multi-node TP/PP; watch all-reduce/all-gather time",
+    "n_train_cases": 93,
+    "top_parallelism": [
+      "tensor-parallel with tp_comm_overlap (Userbuffers) enabled",
+      "MoE with shared experts (EP/TP/PP); interacts with moe_shared_expert_overlap and overlap_moe_expert_parallel_comm",
+      "tensor parallel with tp_comm_overlap (UserBuffers)"
+    ],
+    "top_dtype": [
+      "fp8 training with first/last layers in bf16 (--first-last-layers-bf16)",
+      "bf16 or FP8 (FP8 training explicitly supported)"
+    ]
+  },
+  "ipc-transport-overhead": {
+    "category": "collective-comm",
+    "recipe": "gpt-perf",
+    "config_hint": "multi-node TP/PP; watch all-reduce/all-gather time",
+    "n_train_cases": 44,
+    "top_parallelism": [
+      "tensor parallel + sequence parallel (tp_size>1), inference only (inference_optimized transformer impl)",
+      "data-parallel / FSDP (custom_fsdp), requires ddp_config.nccl_ub=True; MultiGroupMemPoolAllocator targets FSDP+EP and Hybrid FSDP/DP",
+      "custom FSDP (data_parallel_sharding_strategy), MoE with expert-parallel dp group; DP with comm overlap"
+    ],
+    "top_dtype": [
+      "bfloat16 only (asserted)",
+      "supports fp8 params (is_dtype_float8) and fp32"
+    ]
+  },
+  "rank-placement-locality": {
+    "category": "collective-comm",
+    "recipe": "gpt-perf",
+    "config_hint": "multi-node TP/PP; watch all-reduce/all-gather time",
+    "n_train_cases": 16,
+    "top_parallelism": [
+      "MoE with EP + CP + PP + DP, dp-last rank ordering (--use-tp-pp-dp-mapping)",
+      "context parallelism (cp_size>1, e.g. cp4 with hierarchical sizes [2,2]); multi-level NVLink+IB topology",
+      "TP/PP/DP/CP/EP; effect on tp-pp-dp vs tp-cp-ep-dp-pp rank ordering"
+    ],
+    "top_dtype": [
+      "bf16 (test config)",
+      "bf16 or fp32 (AVX512 reduce paths)"
+    ]
+  },
+  "stream-serialization": {
+    "category": "concurrency-sync",
+    "recipe": "determinism-perf",
+    "config_hint": "stream/sync ordering; determinism harness exposes stalls",
+    "n_train_cases": 27,
+    "top_parallelism": [
+      "FSDP (use_torch_fsdp2/use_custom_fsdp), auto-targets dp_cp and ep_dp (with EP>1); generally any comm group with overlap",
+      "pipeline-parallel size == 2 with virtual/interleaved pipeline and overlap_p2p_comm enabled",
+      "tensor-model-parallel (size 2) and sequence-parallel in the *_with_mp scripts; also applies to plain distributed runs"
+    ],
+    "top_dtype": [
+      "FP8/FP16/FP4 (issue-measured)",
+      "fp16"
+    ]
+  },
+  "defensive-oversync": {
+    "category": "concurrency-sync",
+    "recipe": "determinism-perf",
+    "config_hint": "stream/sync ordering; determinism harness exposes stalls",
+    "n_train_cases": 19,
+    "top_parallelism": [
+      "tensor-parallel (VocabParallelEmbedding), but check ran regardless of TP size",
+      "multi-rank distributed (data/tensor/pipeline parallel); benefit scales with rank count due to collective sync",
+      "pipeline model parallel (p2p between pipeline stages)"
+    ],
+    "top_dtype": [
+      "fp8 kv cache (scaled_convert)",
+      "fp16/bf16/fp32 (templated)"
+    ]
+  },
+  "blocking-d2h-sync": {
+    "category": "concurrency-sync",
+    "recipe": "determinism-perf",
+    "config_hint": "stream/sync ordering; determinism harness exposes stalls",
+    "n_train_cases": 98,
+    "top_parallelism": [
+      "inference dynamic batching (dynamic inference context)",
+      "distributed multi-rank (uses all-gather/barrier across world_size); benefit scales with rank count",
+      "MoE with EP/TP; multi-local-expert (num_local_experts>1) path most affected; alltoall and alltoall_seq dispatchers"
+    ],
+    "top_dtype": [
+      "bf16 (Mixtral benchmark context)",
+      "fp16/bf16 (grad_scale_func / loss scaling active)"
+    ]
+  },
+  "host-scalar-loop-work": {
+    "category": "concurrency-sync",
+    "recipe": "determinism-perf",
+    "config_hint": "stream/sync ordering; determinism harness exposes stalls",
+    "n_train_cases": 57,
+    "top_parallelism": [
+      "dynamic in-flight batching inference",
+      "context-parallel (cp_size>=1) and packed batches",
+      "pipeline (interleaved 1F1B / virtual pipeline)"
+    ],
+    "top_dtype": [
+      "bf16/fp16/fp32",
+      "bool tensor (is_token_ids)"
+    ]
+  },
+  "gil-held-blocking-call": {
+    "category": "concurrency-sync",
+    "recipe": "determinism-perf",
+    "config_hint": "stream/sync ordering; determinism harness exposes stalls",
+    "n_train_cases": 16,
+    "top_parallelism": [
+      "distributed checkpoint (single_file_per_rank required); benefits scale with thread_count/bucket count",
+      "multiprocessing executor (TP/PP with VLLM_ENABLE_V1_MULTIPROCESSING; not Ray/uniproc); benefit amplified with async scheduling / non_block path",
+      "multiproc executor with async scheduling and/or pipeline parallelism (non_block path where max_concurrent_batches > 1)"
+    ],
+    "top_dtype": [
+      "affects all incl. FP8 current-scaling quantize paths"
+    ]
+  },
+  "spin-wait-hang": {
+    "category": "concurrency-sync",
+    "recipe": "determinism-perf",
+    "config_hint": "stream/sync ordering; determinism harness exposes stalls",
+    "n_train_cases": 18,
+    "top_parallelism": [
+      "pipeline-parallel + tensor/embedding groups (multi-rank inference); hang requires >1 pipeline stage where collectives desync",
+      "disaggregated prefill/decode with remote KV transfer",
+      "multi-GPU / distributed (message queue used per reader; docstring notes each GPU otherwise pins one thread at 100% CPU)"
+    ],
+    "top_dtype": [
+      "bf16/fp32 (SHM path only for these; else oneCCL fallback)",
+      "bf16/fp8"
+    ]
+  },
+  "shared-mutable-state-contention": {
+    "category": "concurrency-sync",
+    "recipe": "determinism-perf",
+    "config_hint": "stream/sync ordering; determinism harness exposes stalls",
+    "n_train_cases": 10,
+    "top_parallelism": [
+      "tensor-parallel with tp_comm_overlap=True (TE userbuffer comm-overlap)",
+      "distributed / multi-rank (tensor or pipeline parallel) inference server using torch.distributed.broadcast",
+      "tensor/pipeline parallel with local readers (n_local_reader>0) over shared memory"
+    ],
+    "top_dtype": [
+      "AWQ int4 quantized",
+      "torch.autocast active with allgather dtype != param original dtype; BF16 vs FP16 distinguishes GradScaler creation"
+    ]
+  },
+  "sm-margin-reservation": {
+    "category": "concurrency-sync",
+    "recipe": "determinism-perf",
+    "config_hint": "stream/sync ordering; determinism harness exposes stalls",
+    "n_train_cases": 8,
+    "top_parallelism": [
+      "MoE expert parallelism (EP) via flex token dispatcher",
+      "pipeline parallel (esp. uneven PP or low gradient-accumulation steps); requires CUDA_DEVICE_MAX_CONNECTIONS>1 for overlapped UCC comms",
+      "all model-parallel groups (dp/tp/pp/cp/ep and combos)"
+    ],
+    "top_dtype": [
+      "bf16/non-fp8 (assert not fp8_dispatch: HybridEP dispatcher does not support fp8 dispatch now)",
+      "fp16/bf16/fp8 (all norm variants patched incl. Fp8)"
+    ]
+  },
+  "redundant-hot-path-work": {
+    "category": "host-overhead",
+    "recipe": "gpt-perf",
+    "config_hint": "CPU-bound launch overhead; small-batch step time",
+    "n_train_cases": 201,
+    "top_parallelism": [
+      "distributed optimizer (use_distributed_optimizer=True); overhead scales with data_parallel_world_size and number of buckets",
+      "multi-GPU with model-parallel / distributed optimizer (extra all_reduce over grad_stats_parallel_group); ChainedOptimizer used e.g. with MoE+dense hybrid",
+      "TP (uses tensor_model_parallel_world_size)"
+    ],
+    "top_dtype": [
+      "fp8",
+      "logits cast to float32 for softmax"
+    ]
+  },
+  "one-time-setup-on-hot-path": {
+    "category": "host-overhead",
+    "recipe": "gpt-perf",
+    "config_hint": "CPU-bound launch overhead; small-batch step time",
+    "n_train_cases": 37,
+    "top_parallelism": [
+      "tensor/sequence parallel (NVLS symmetric-memory collectives); regression affected all configs incl. training",
+      "any (per-iteration DDP grad-buffer path); MoE/expert-parallel params also covered",
+      "distributed checkpointing (use_dist_ckpt), data-parallel + context-parallel save group"
+    ],
+    "top_dtype": [
+      "bfloat16 (NVLS kernels assert bf16)",
+      "fp8 gates the set_is_first_microbatch loop — non-fp8 runs now skip it entirely; the zero_grad_buffers speedup is dtype-agnostic"
+    ]
+  },
+  "quadratic-python-structure": {
+    "category": "host-overhead",
+    "recipe": "gpt-perf",
+    "config_hint": "CPU-bound launch overhead; small-batch step time",
+    "n_train_cases": 37,
+    "top_parallelism": [
+      "any (test uses TP=1, PP=1)",
+      "distributed checkpoint save with thread_count>1 (multiple writer threads/bins)",
+      "matters most with pipeline parallelism / max_concurrent_batches>1 (per new test test_preempt_during_execution comment) and with large len(running) (1K+ reqs per NOTE)"
+    ],
+    "top_dtype": [
+      "bfloat16 in test config, not dtype-specific",
+      "int32 index arrays"
+    ]
+  },
+  "eager-error-string-build": {
+    "category": "host-overhead",
+    "recipe": "gpt-perf",
+    "config_hint": "CPU-bound launch overhead; small-batch step time",
+    "n_train_cases": 3,
+    "top_parallelism": [],
+    "top_dtype": []
+  },
+  "custom-op-dispatch-overhead": {
+    "category": "host-overhead",
+    "recipe": "gpt-perf",
+    "config_hint": "CPU-bound launch overhead; small-batch step time",
+    "n_train_cases": 18,
+    "top_parallelism": [
+      "TP-aware (split sizes precomputed per tp_size); benefit likely larger with quantized/TP linear layers that fuse under compile",
+      "affects FusedMoE (TP/EP all-reduce path) and VocabParallelEmbedding (tp_size>1)",
+      "tensor-parallel aware (get_model patched under xm_tp_rank)"
+    ],
+    "top_dtype": [
+      "fp8 KV cache (fp8_e4m3), FP8 query quantization",
+      "fp8 (w8a8 block-quantized, e4m3)"
+    ]
+  },
+  "kernel-fusion": {
+    "category": "kernel-efficiency",
+    "recipe": "module_performance",
+    "config_hint": "per-module kernel microbench",
+    "n_train_cases": 193,
+    "top_parallelism": [
+      "MoE (expert parallelism / token dispatch)",
+      "inference dynamic batching (non-static)",
+      "Megatron-FSDP (requires __fsdp_param__), used with gradient_accumulation_fusion=True; TE activation offloading context mentioned"
+    ],
+    "top_dtype": [
+      "fp16/bf16/fp32 (VLLM_DISPATCH_FLOATING_TYPES)",
+      "floating types (VLLM_DISPATCH_FLOATING_TYPES)"
+    ]
+  },
+  "fused-backend-swap": {
+    "category": "kernel-efficiency",
+    "recipe": "module_performance",
+    "config_hint": "per-module kernel microbench",
+    "n_train_cases": 197,
+    "top_parallelism": [
+      "tensor-parallel with --sequence-parallel required when tp_size>1; MoE and MTP explicitly unsupported (asserts)",
+      "MoE (token-wise weighted SwiGLU path, weighted_bias_swiglu_impl)",
+      "inference dynamic batching (TP per-partition heads used)"
+    ],
+    "top_dtype": [
+      "RMSNorm required; no bias/qkv-bias; TE required (HAVE_TE); optional fp8 via TE",
+      "affects mixed precision where weights dtype may exceed activation dtype"
+    ]
+  },
+  "unfused-transpose-copy": {
+    "category": "kernel-efficiency",
+    "recipe": "module_performance",
+    "config_hint": "per-module kernel microbench",
+    "n_train_cases": 42,
+    "top_parallelism": [
+      "context parallel (thd/CP path affected); applies when apply_rope_fusion=True",
+      "context-parallel/PP2 TP1 in affected tests",
+      "context parallelism (CP) and/or packed sequence (THD qkv_format); apply_rope_fusion enabled"
+    ],
+    "top_dtype": [
+      "fp16 (run.sh --fp16)",
+      "bfloat16 / float8_e4m3fn (per benchmark)"
+    ]
+  },
+  "kernel-occupancy-redesign": {
+    "category": "kernel-efficiency",
+    "recipe": "module_performance",
+    "config_hint": "per-module kernel microbench",
+    "n_train_cases": 68,
+    "top_parallelism": [
+      "MoE (expert-parallel) with Multi-LoRA (multiple adapters, max_loras > 1)",
+      "expert-parallel (expert_map path benefits most; benchmark uses ep_size 1 and 8)",
+      "TP8+TP8, TP8+EP8, DP+EP (issue-measured)"
+    ],
+    "top_dtype": [
+      "int8 quantization (fp16/bf16 input -> int8 output)",
+      "fp16 (__half; float2/half2 vectorized paths, ELEMENTS_PER_LDG=4)"
+    ]
+  },
+  "kernel-config-tuning": {
+    "category": "kernel-efficiency",
+    "recipe": "module_performance",
+    "config_hint": "per-module kernel microbench",
+    "n_train_cases": 156,
+    "top_parallelism": [
+      "TP8",
+      "TP4",
+      "MoE (OpenAI triton_kernels matmul_ogs)"
+    ],
+    "top_dtype": [
+      "fp8_w8a8",
+      "fp8_w8a8 (block_shape=[128,128])"
+    ]
+  },
+  "suboptimal-kernel-gate": {
+    "category": "kernel-efficiency",
+    "recipe": "module_performance",
+    "config_hint": "per-module kernel microbench",
+    "n_train_cases": 247,
+    "top_parallelism": [
+      "ZeRO-Offload / CPU-Adam",
+      "Megatron-FSDP with gradient_accumulation_fusion enabled",
+      "TP1/PP1 in test config"
+    ],
+    "top_dtype": [
+      "fp16/bf16",
+      "bfloat16"
+    ]
+  },
+  "kernel-noop-skip": {
+    "category": "kernel-efficiency",
+    "recipe": "module_performance",
+    "config_hint": "per-module kernel microbench",
+    "n_train_cases": 29,
+    "top_parallelism": [
+      "tensor-parallel (per-partition head counts)",
+      "affects any TP config",
+      "GQA config: applies when num_attention_heads_per_partition == num_query_groups_per_partition (standard MHA, ratio==1)"
+    ],
+    "top_dtype": [
+      "bf16 (issue-measured)",
+      "fp8 block-quantized (recv_x_scale, block_k quantization)"
+    ]
+  },
+  "algorithmic-compute-reduction": {
+    "category": "kernel-efficiency",
+    "recipe": "module_performance",
+    "config_hint": "per-module kernel microbench",
+    "n_train_cases": 24,
+    "top_parallelism": [
+      "MoE with expert-model-parallel (EP) / TP+SP; alltoall token dispatcher required for capacity factor",
+      "affects both TP-only and pipeline-parallel inference (broadcast_from_last_pipeline_stage added for PP done-flag sync)",
+      "supports tensor-parallel attention (num_heads_per_partition); TEDotProductAttention path only"
+    ],
+    "top_dtype": [
+      "float32 (logits cast to .float() for softmax)",
+      "bf16 (GroupedGEMM path)"
+    ]
+  },
+  "correctness-forces-slow-path": {
+    "category": "kernel-efficiency",
+    "recipe": "module_performance",
+    "config_hint": "per-module kernel microbench",
+    "n_train_cases": 39,
+    "top_parallelism": [
+      "any (NCCL all-reduce path); TE attention path affected",
+      "tensor parallel (and pipeline parallel forward_step)",
+      "tensor-parallel (async-TP, symmetric memory fused matmul+reduce-scatter)"
+    ],
+    "top_dtype": [
+      "bf16/fp16/fp32 (matmul configs provided per dtype)",
+      "bf16 noted in README for reproducibility"
+    ]
+  },
+  "dma-access-order-relax": {
+    "category": "kernel-efficiency",
+    "recipe": "module_performance",
+    "config_hint": "per-module kernel microbench",
+    "n_train_cases": 7,
+    "top_parallelism": [
+      "tensor parallel (TP>1, exercises broadcast_data across TP group)",
+      "MoE (expert-parallel / fused MoE layers)",
+      "tensor-parallel custom all-reduce (world_size 2/4/8)"
+    ],
+    "top_dtype": [
+      "float32 accumulation with rtne downcast; DOT_PRECISION default 'ieee' (tf32/tf32x3 selectable via FLA_TRIL_PRECISION)",
+      "4-bit weights (W4A8/W4A16 machete quantization)"
+    ]
+  },
+  "dynamo-graph-break": {
+    "category": "compilation",
+    "recipe": "gpt-perf",
+    "config_hint": "first-step/compile time; torch.compile recompilation",
+    "n_train_cases": 41,
+    "top_parallelism": [
+      "tensor-parallel (vocab-parallel cross entropy)",
+      "tensor-parallel (tp_size referenced)",
+      "tp=2 (test uses tp_size=2 for PowerMoE-3b), works with torch.compile fullgraph"
+    ],
+    "top_dtype": [
+      "bfloat16 (grad_input cast)",
+      "fp8 block-scaled (a8w8 blockscale)"
+    ]
+  },
+  "cudagraph-enablement": {
+    "category": "compilation",
+    "recipe": "gpt-perf",
+    "config_hint": "first-step/compile time; torch.compile recompilation",
+    "n_train_cases": 112,
+    "top_parallelism": [
+      "inference; expert-parallel path has special handling (decode_only_cuda_graphs / EP all-reduce guard against NCCL hang)",
+      "expert parallel (EP>1) combined with tensor + data parallel; MoE dynamic inference",
+      "distributed optimizer with fp8-param-gather; tp=2 in tests"
+    ],
+    "top_dtype": [
+      "model_config.dtype",
+      "fp8 (delayed/tensorwise/blockwise/mxfp8)"
+    ]
+  },
+  "cudagraph-incompatibility": {
+    "category": "compilation",
+    "recipe": "gpt-perf",
+    "config_hint": "first-step/compile time; torch.compile recompilation",
+    "n_train_cases": 53,
+    "top_parallelism": [
+      "TP-aware (cuda_graph_step_size rounded to TP size); dynamic inference backend",
+      "tensor-parallel (uses model_comm_pgs.tp); full-iteration CUDA graph",
+      "virtual pipeline parallelism (VPP/interleaved) + CUDA graphs (enable_cuda_graph, cuda_graph_scope != full_iteration)"
+    ],
+    "top_dtype": [
+      "fp8 (e4m3/hybrid) for the MTP fp8-caching fix",
+      "bfloat16 high-precision reload -> fp8 quantized"
+    ]
+  },
+  "wasted-compilation-work": {
+    "category": "compilation",
+    "recipe": "gpt-perf",
+    "config_hint": "first-step/compile time; torch.compile recompilation",
+    "n_train_cases": 59,
+    "top_parallelism": [
+      "V2 model runner; dp_size handled but not required",
+      "LoRA MoE with fully_sharded=True (legacy two-kernel shrink/expand path)",
+      "affected by tensor_parallel_size + sequence_parallelism (sizes filtered for SP); otherwise general"
+    ],
+    "top_dtype": [
+      "fp8 (fp8_gemm_nt / m_grouped_fp8_gemm_nt_contiguous)",
+      "fp8_e4m3fn block-quantized"
+    ]
+  },
+  "compile-cache-misconfig": {
+    "category": "compilation",
+    "recipe": "gpt-perf",
+    "config_hint": "first-step/compile time; torch.compile recompilation",
+    "n_train_cases": 25,
+    "top_parallelism": [
+      "cache keyed per rank_{rank}_{dp_rank}",
+      "affects per-rank cache dirs (rank_{rank}_{dp_rank}); multi-model scenarios: spec decode with EAGLE/Medusa draft head + backbone, or multimodal language_model/vision_model",
+      "affected path keys cache per tp world_size/rank"
+    ],
+    "top_dtype": [
+      "bf16 (packing supported with BF16 per test note)",
+      "fp16 (fused softmax kernels)"
+    ]
+  },
+  "warmup-shape-gap": {
+    "category": "compilation",
+    "recipe": "gpt-perf",
+    "config_hint": "first-step/compile time; torch.compile recompilation",
+    "n_train_cases": 39,
+    "top_parallelism": [
+      "context-parallel (cp>1) and tensor-parallel; sequence_parallel affects shapes",
+      "sequence parallelism enabled with tensor_model_parallel_size > 1",
+      "sequence-parallel with tensor_model_parallel_size>1"
+    ],
+    "top_dtype": [
+      "bf16/fp16/fp32 per args",
+      "bf16/fp16/fp32 (warmup covers all)"
+    ]
+  },
+  "deferred-free-peak": {
+    "category": "memory-management",
+    "recipe": "gpt-perf-dp8",
+    "config_hint": "allocator/fragmentation; peak-mem under DP8",
+    "n_train_cases": 43,
+    "top_parallelism": [
+      "pipeline model parallel (pp>1) required; requires gradient_accumulation_fusion; interacts with sequence_parallel/TP in the wgrad all-gather path",
+      "requires world_size(parallelization_group) > 1 (fully-parallel dist-checkpoint load, typically DP group)",
+      "distributed checkpoint fully-parallel load across a parallelization ProcessGroup (e.g. data-parallel replicas)"
+    ],
+    "top_dtype": [
+      "fp16",
+      "fp8 (with temporary bf16 dequantized tensors)"
+    ]
+  },
+  "memory-leak-unpruned-state": {
+    "category": "memory-management",
+    "recipe": "gpt-perf-dp8",
+    "config_hint": "allocator/fragmentation; peak-mem under DP8",
+    "n_train_cases": 77,
+    "top_parallelism": [
+      "affects per-rank KV/dynamic inference context; tensors sized by max_total_requests and max_kv_block_count",
+      "CUDA graphs / per-device (PP+VPP first/last layer gating)",
+      "torch FSDP2 (TorchFullyShardedDataParallel)"
+    ],
+    "top_dtype": [
+      "fp8",
+      "fp16"
+    ]
+  },
+  "redundant-buffer-copy": {
+    "category": "memory-management",
+    "recipe": "gpt-perf-dp8",
+    "config_hint": "allocator/fragmentation; peak-mem under DP8",
+    "n_train_cases": 93,
+    "top_parallelism": [
+      "TP (low latency TP case mentioned) (issue-measured)",
+      "MoE/expert-parallel models; sharded branch requires distributed optimizer (main_param_sharded)",
+      "CUDA graphs enabled (share_cudagraph_io_buffers) with transformer decoder layers; PP/VPP chunks"
+    ],
+    "top_dtype": [
+      "float32",
+      "fp16/half"
+    ]
+  },
+  "buffer-sizing-layout": {
+    "category": "memory-management",
+    "recipe": "gpt-perf-dp8",
+    "config_hint": "allocator/fragmentation; peak-mem under DP8",
+    "n_train_cases": 80,
+    "top_parallelism": [
+      "MoE / expert-parallel, GroupedMLP with num_local_experts>=1",
+      "MoE with expert parallelism; recommended when num_local_experts > 1; dropless training (moe_expert_capacity_factor is None)",
+      "MoE (EP/TP), affects both AllGather and AllToAll dispatchers and Grouped/TEGrouped MLP"
+    ],
+    "top_dtype": [
+      "int32",
+      "fp16"
+    ]
+  },
+  "transient-realloc-spike": {
+    "category": "memory-management",
+    "recipe": "gpt-perf-dp8",
+    "config_hint": "allocator/fragmentation; peak-mem under DP8",
+    "n_train_cases": 7,
+    "top_parallelism": [
+      "tensor-parallel SwiGLU/gated MLP checkpoint load (DCP torch_dist format)",
+      "tensor/pipeline parallel (per-partition num_attention_heads_per_partition used in buffer shape)",
+      "affects DBO (dual-batch-overlap) workspace and any workspace-using path; tests are TP LoRA multi-GPU"
+    ],
+    "top_dtype": [
+      "FP8 (squeeze fix) / bfloat16 (test), affects gated w+v merge",
+      "args.params_dtype (buffer allocated in model params dtype)"
+    ]
+  },
+  "shared-workspace-reuse": {
+    "category": "memory-management",
+    "recipe": "gpt-perf-dp8",
+    "config_hint": "allocator/fragmentation; peak-mem under DP8",
+    "n_train_cases": 30,
+    "top_parallelism": [
+      "pipeline/virtual-pipeline parallel with TE CUDA graphs; benefit scales with num_microbatches (test parametrizes 16/64/256, pp 1/2/4, vpp None/2)",
+      "distributed optimizer (DP), no overlap_param_gather support",
+      "pipeline/virtual-pipeline parallel (buffer reuse spans layers per chunk)"
+    ],
+    "top_dtype": [
+      "MXFP8 (weights), bf16/fp32 grads",
+      "bf16 (guarded by args.bf16); fp32 params unaffected"
+    ]
+  },
+  "allocator-config": {
+    "category": "memory-management",
+    "recipe": "gpt-perf-dp8",
+    "config_hint": "allocator/fragmentation; peak-mem under DP8",
+    "n_train_cases": 7,
+    "top_parallelism": [
+      "pipeline (guarded by mpu.is_pipeline_last_stage)",
+      "training and evaluation loops (train_step / evaluate)",
+      "tensor/pipeline parallel NCCL collectives (allreduce/allgather/reducescatter)"
+    ],
+    "top_dtype": [
+      "fp32 optimizer states"
+    ]
+  },
+  "uvm-managed-pagefault": {
+    "category": "memory-management",
+    "recipe": "gpt-perf-dp8",
+    "config_hint": "allocator/fragmentation; peak-mem under DP8",
+    "n_train_cases": 9,
+    "top_parallelism": [
+      "RL / dynamic inference (GRPO-style) inference context",
+      "TP1/PP1 (test cases), applies generally to dynamic inference",
+      "tensor_model_parallel_size passed to context"
+    ],
+    "top_dtype": [
+      "fp8 and bf16 test cases",
+      "params_dtype used for KV cache (any)"
+    ]
+  },
+  "activation-recompute": {
+    "category": "memory-footprint",
+    "recipe": "gpt-perf-dp8",
+    "config_hint": "activation/param memory; OOM threshold",
+    "n_train_cases": 24,
+    "top_parallelism": [
+      "MoE (shared experts, TE grouped MLP), optionally MLA",
+      "context parallelism (CP>1) for CP path; recompute_granularity=full, recompute_method=uniform, recompute_num_layers=1 for memory path; also relevant to MoE/EP and TP",
+      "MoE / expert parallelism (GroupedMLP, TEGroupedMLP); also applies to MLA (mla_up_proj) and layernorms"
+    ],
+    "top_dtype": [
+      "fp8 (non-delayed recipe, e.g. blockwise/current scaling)",
+      "fp8 path uses te_checkpoint, non-fp8 uses tensor_parallel.checkpoint"
+    ]
+  },
+  "offload-management": {
+    "category": "memory-footprint",
+    "recipe": "gpt-perf-dp8",
+    "config_hint": "activation/param memory; OOM threshold",
+    "n_train_cases": 43,
+    "top_parallelism": [
+      "TP-aware (num_attention_heads_per_partition); dynamic inference engine",
+      "tp1pp1 test cases; tensor_model_parallel_size passed to context",
+      "only active when cpu_offloading=True (CPU activation/weight offloading path, TE-backed)"
+    ],
+    "top_dtype": [
+      "supports fp8_input_store path; independent of offload flag",
+      "bf16/fp16 (V1 supported dtypes)"
+    ]
+  },
+  "low-precision-state": {
+    "category": "memory-footprint",
+    "recipe": "gpt-perf-dp8",
+    "config_hint": "activation/param memory; OOM threshold",
+    "n_train_cases": 56,
+    "top_parallelism": [
+      "interacts with CP/SP/TP padding",
+      "distributed optimizer (use_distributed_optimizer)",
+      "distributed optimizer (ZeRO-style DP param sharding); test uses TP=4, DP"
+    ],
+    "top_dtype": [
+      "fp8 (e4m3/e5m2) KV cache",
+      "fp8 (e4m3/hybrid; delayed/tensorwise/mxfp8 recipes); requires TransformerEngine"
+    ]
+  },
+  "skip-saved-tensor-backward": {
+    "category": "memory-footprint",
+    "recipe": "gpt-perf-dp8",
+    "config_hint": "activation/param memory; OOM threshold",
+    "n_train_cases": 18,
+    "top_parallelism": [
+      "ep8 and tp4/ep2/etp2/pp2 test configs",
+      "expert-parallel MoE",
+      "distributed checkpoint load with fully-parallel gather (world_size>1 in parallelization_group)"
+    ],
+    "top_dtype": [
+      "bf16 activations/params, fp32 router output",
+      "bf16 / torch autocast"
+    ]
+  },
+  "meta-device-init": {
+    "category": "memory-footprint",
+    "recipe": "gpt-perf-dp8",
+    "config_hint": "activation/param memory; OOM threshold",
+    "n_train_cases": 5,
+    "top_parallelism": [
+      "Megatron FSDP (use_megatron_fsdp) with init_model_with_meta_device enabled",
+      "tensor-parallel (init behavior differs across TP world sizes; unit test checks TP1 vs TP4 equivalence)",
+      "FSDP (FullyShardedDataParallel), sync_module_states=True"
+    ],
+    "top_dtype": [
+      "params_dtype (master weight built in fp32 then cast)",
+      "bfloat16 (test uses bf16)"
+    ]
+  },
+  "reshard-tradeoff": {
+    "category": "parallelism-scheduling",
+    "recipe": "hybrid-perf",
+    "config_hint": "PP schedule/bubble; interleaved 1F1B",
+    "n_train_cases": 27,
+    "top_parallelism": [
+      "Custom-FSDP with num_distributed_optimizer_instances > 1 (hybrid shard data-parallel); intra + inter FSDP groups; MoE/expert-parallel params supported via expt_dp/intra_expt_dp groups",
+      "tensor-parallel (TP>1), sequence-parallel relevant for k_pos_emb gather path",
+      "PyTorch FSDP2 (--use-torch-fsdp2); enables ZeRO-2 vs default ZeRO-3"
+    ],
+    "top_dtype": [
+      "supports fp32/bf16/fp8 grad buffers (grad_reduce_in_fp32, is_dtype_float8)",
+      "bf16 (fp16 explicitly unsupported for expert parallelism per adjacent assertion)"
+    ]
+  },
+  "fsdp-zero-pipeline-break": {
+    "category": "parallelism-scheduling",
+    "recipe": "hybrid-perf",
+    "config_hint": "PP schedule/bubble; interleaved 1F1B",
+    "n_train_cases": 9,
+    "top_parallelism": [
+      "interleaved/virtual pipeline parallelism (VPP) with pipeline_model_parallel_size>1, encoder-decoder model type; requires encoder_pipeline_model_parallel_size==0 and no cross-attention between encoder/decoder",
+      "MoE with expert-model-parallel (EP>1) + data parallel; requires use_distributed_optimizer (ZeRO-1)",
+      "tensor + pipeline + sequence parallelism (model_parallel_memory_opt); encoder_and_decoder and decoder-only model types"
+    ],
+    "top_dtype": [
+      "fp16",
+      "bf16 / fp8 (HYBRID recipe in example); fp8 weight buffers also sharded"
+    ]
+  },
+  "pipeline-stage-imbalance": {
+    "category": "parallelism-scheduling",
+    "recipe": "hybrid-perf",
+    "config_hint": "PP schedule/bubble; interleaved 1F1B",
+    "n_train_cases": 12,
+    "top_parallelism": [
+      "pipeline parallel + virtual pipeline (VPP), MoE; benefits imbalanced models (e.g. DeepSeek-V3 with MTP/loss layers)",
+      "pipeline parallel (PP>1) with interleaved virtual pipeline parallelism (VPP); requires num_layers_in_first/last_pipeline_stage or account_for_embedding/loss_in_pipeline_split set",
+      "pipeline-parallel (PP>1); explicitly incompatible with virtual/interleaved pipeline (VPP) per assert"
+    ],
+    "top_dtype": [
+      "logits buffer float32"
+    ]
+  },
+  "eplb-issues": {
+    "category": "parallelism-scheduling",
+    "recipe": "hybrid-perf",
+    "config_hint": "PP schedule/bubble; interleaved 1F1B",
+    "n_train_cases": 11,
+    "top_parallelism": [
+      "expert-parallel / data-parallel MoE with EPLB (VLLM_USE_FLASHINFER_MOE_FP4=1, backend latency/throughput)",
+      "expert parallelism (EP) with EPLB enabled; test uses tp_size=4, world_size=2/4",
+      "expert parallelism (EP) — EPLB only active with multiple EP ranks"
+    ],
+    "top_dtype": [
+      "NVFP4 (w) + FP8 e4m3 scales, bf16 activations",
+      "WNA16 (weight-only int quant via CompressedTensors) MoE; also generic Qwen3VLMoe"
+    ]
+  },
+  "scheduler-work-distribution": {
+    "category": "parallelism-scheduling",
+    "recipe": "hybrid-perf",
+    "config_hint": "PP schedule/bubble; interleaved 1F1B",
+    "n_train_cases": 19,
+    "top_parallelism": [
+      "data-parallel group >1 (FullyParallelSaveStrategyWrapper); affects distributed checkpoint save",
+      "data-parallel (with context-parallel) group; benefits scale with DP size >1",
+      "data-parallel / distributed checkpointing (parallelization_group across DP ranks, group_size>1)"
+    ],
+    "top_dtype": [
+      "handles bfloat16/float32/float16 shards",
+      "int4 (4-bit quantized weights) fused MoE"
+    ]
+  },
+  "cpu-affinity-numa": {
+    "category": "parallelism-scheduling",
+    "recipe": "hybrid-perf",
+    "config_hint": "PP schedule/bubble; interleaved 1F1B",
+    "n_train_cases": 15,
+    "top_parallelism": [
+      "CPU tensor-parallel / multi-threaded OMP inference",
+      "CPU OMP threads / tensor-parallel CPU backend",
+      "affects OpenMP thread affinity per worker rank"
+    ],
+    "top_dtype": [
+      "bf16 (issue-measured)"
+    ]
+  },
+  "serial-io": {
+    "category": "io-startup",
+    "recipe": "gpt-perf",
+    "config_hint": "dataloader/ckpt startup; time-to-first-step",
+    "n_train_cases": 8,
+    "top_parallelism": [
+      "distributed data-parallel (rank-0-first build then barrier); benefit scales with number of blended dataset prefixes",
+      "DistributedOptimizer + data parallelism (dist-ckpt); benefit scales with DP world size",
+      "distributed multi-worker/multi-node via Ray (tensor/pipeline parallel); effect grows with worker count"
+    ],
+    "top_dtype": [
+      "single dtype grad buffer assumed (assert len(gbuf_range_maps)==1)"
+    ]
+  },
+  "async-io-overlap": {
+    "category": "io-startup",
+    "recipe": "gpt-perf",
+    "config_hint": "dataloader/ckpt startup; time-to-first-step",
+    "n_train_cases": 5,
+    "top_parallelism": [
+      "distributed checkpointing; benefits scale with data-parallel checkpoint size",
+      "benefits both single-engine and DP (DPEngineCoreProc.add_request now takes request_wave arg); most impactful when per-request preprocessing is heavy",
+      "ZeRO stage-1 without offloading (per tutorial limitations); illustrated with pipeline scheduler"
+    ],
+    "top_dtype": [
+      "bf16/fp tensors cast to uint8 for I/O"
+    ]
+  },
+  "slow-fs-path": {
+    "category": "io-startup",
+    "recipe": "gpt-perf",
+    "config_hint": "dataloader/ckpt startup; time-to-first-step",
+    "n_train_cases": 4,
+    "top_parallelism": [
+      "ZeRO-Infinity / ZeRO stage-3 NVMe param offload"
+    ],
+    "top_dtype": []
+  },
+  "weight-load-strategy": {
+    "category": "io-startup",
+    "recipe": "gpt-perf",
+    "config_hint": "dataloader/ckpt startup; time-to-first-step",
+    "n_train_cases": 24,
+    "top_parallelism": [
+      "tensor-parallel + data-parallel (fully-parallel dist checkpoint load; effect appears when TP>1 so main replicas concentrate in one DP group)",
+      "distributed (dist) checkpoint with data-parallel + context-parallel groups; benefit scales with DP size",
+      "distributed checkpointing with a parallelization ProcessGroup (data-parallel replica group); only active when args.ckpt_fully_parallel_save is set"
+    ],
+    "top_dtype": [
+      "fp8 online-quantized from bf16/fp16 checkpoint (dynamic activation scheme, non-fp8-serialized)",
+      "configurable (tensorizer_config.dtype, e.g. float16)"
+    ]
+  },
+  "redundant-load-startup-work": {
+    "category": "io-startup",
+    "recipe": "gpt-perf",
+    "config_hint": "dataloader/ckpt startup; time-to-first-step",
+    "n_train_cases": 61,
+    "top_parallelism": [
+      "Megatron-FSDP with nccl_ub (NCCL user buffers) + fsdp_double_buffer required",
+      "large-scale / high data-parallel (many ranks); many dataset file prefixes (hundreds to thousands)",
+      "virtual pipeline parallelism (VPP) with pipeline parallelism"
+    ],
+    "top_dtype": [
+      "params_dtype (any)",
+      "fp32 optimizer state (exp_avg/exp_avg_sq allocated as torch.float32)"
+    ]
+  },
+  "process-launch-overhead": {
+    "category": "io-startup",
+    "recipe": "gpt-perf",
+    "config_hint": "dataloader/ckpt startup; time-to-first-step",
+    "n_train_cases": 6,
+    "top_parallelism": [
+      "multiproc executor (tensor/pipeline parallel spawning worker processes)",
+      "tensor-parallel / multi-GPU (world_size > 1, custom all-reduce path)",
+      "tensor-parallel / multi-GPU with multiprocessing (mp) executor backend, world_size>1"
+    ],
+    "top_dtype": []
+  },
+  "weight-transfer-sync": {
+    "category": "io-startup",
+    "recipe": "gpt-perf",
+    "config_hint": "dataloader/ckpt startup; time-to-first-step",
+    "n_train_cases": 0,
+    "top_parallelism": [],
+    "top_dtype": []
+  },
+  "prefix-state-caching": {
+    "category": "inference-serving",
+    "recipe": "gpt-perf",
+    "config_hint": "decode throughput/latency (proxy via gpt-perf)",
+    "n_train_cases": 33,
+    "top_parallelism": [
+      "DCP/PCP asserted world_size==1 for hybrid/sliding-window paths",
+      "tensor-parallel (TP>1) with MLA; also PP-aware per comment",
+      "multi-engine / data-parallel or cross-restart (inconsistent lora_int_id across engines)"
+    ],
+    "top_dtype": [
+      "groups with differing dtype/head_size producing different per-block page sizes (e.g. float16 vs float32) that align to equal page size via different block_size",
+      "fp32/fp16/bf16 (kernel input types)"
+    ]
+  },
+  "prefill-decode-kernel-split": {
+    "category": "inference-serving",
+    "recipe": "gpt-perf",
+    "config_hint": "decode throughput/latency (proxy via gpt-perf)",
+    "n_train_cases": 20,
+    "top_parallelism": [
+      "only when heads-per-rank >= 32 (low TP); high-TP falls back to mixed-batch FP8 decode kernel",
+      "MLA attention (FlashMLA backend)",
+      "tensor-parallel (per-rank A/D split)"
+    ],
+    "top_dtype": [
+      "fp8_ds_mla kv-cache, bf16 activations",
+      "float16/bfloat16 (get_supported_dtypes); optional fp8 KV cache with DEQUANT path"
+    ]
+  },
+  "speculative-decoding": {
+    "category": "inference-serving",
+    "recipe": "gpt-perf",
+    "config_hint": "decode throughput/latency (proxy via gpt-perf)",
+    "n_train_cases": 18,
+    "top_parallelism": [
+      "TP with num_heads 16 or 128; MLA",
+      "async scheduling (spec decode); PP path handled separately",
+      "spec-decode (speculative decoding, TP=1 in example)"
+    ],
+    "top_dtype": [
+      "bf16/model dtype",
+      "float32 probs"
+    ]
+  },
+  "encoder-execution-mode": {
+    "category": "inference-serving",
+    "recipe": "gpt-perf",
+    "config_hint": "decode throughput/latency (proxy via gpt-perf)",
+    "n_train_cases": 25,
+    "top_parallelism": [
+      "supports PP (pipelining forward step paths retained)",
+      "disaggregated encoder (EPD) instances",
+      "ViT with TP (num_heads_per_partition)"
+    ],
+    "top_dtype": []
+  },
+  "async-output-overlap": {
+    "category": "inference-serving",
+    "recipe": "gpt-perf",
+    "config_hint": "decode throughput/latency (proxy via gpt-perf)",
+    "n_train_cases": 20,
+    "top_parallelism": [
+      "async scheduling enabled (use_async_scheduling); single-step overlap",
+      "Max-Throughput TP1 conc1024; Min-Latency TP8 conc8 (issue-measured)",
+      "multiprocess executor (TP/PP with MultiprocExecutor); async scheduling / max_concurrent_batches>1 exercises the non_block Future path"
+    ],
+    "top_dtype": [
+      "MXFP4/MXFP8/FP8/BF16 (issue-measured)"
+    ]
+  },
+  "kv-cache-capacity": {
+    "category": "inference-serving",
+    "recipe": "gpt-perf",
+    "config_hint": "decode throughput/latency (proxy via gpt-perf)",
+    "n_train_cases": 34,
+    "top_parallelism": [
+      "pipeline parallel (pp_size>1) with uneven/non-uniform layer allocation across stages; dynamic inference (continuous batching)",
+      "TP (max_active_requests rounded to tp_size)",
+      "pipeline model parallel (pp_size > 1); over-allocation factor equals pp_size; interacts with dynamic-batching inference"
+    ],
+    "top_dtype": [
+      "any KV-cache params_dtype (MLA path also affected)",
+      "params_dtype for KV cache; example uses bf16"
+    ]
+  },
+  "sparse-layer-update": {
+    "category": "inference-serving",
+    "recipe": "gpt-perf",
+    "config_hint": "decode throughput/latency (proxy via gpt-perf)",
+    "n_train_cases": 4,
+    "top_parallelism": [
+      "expert-model-parallel-size>1 (EP=2 in test) with GroupedMLP grouped-gemm; --overlap-grad-reduce + --use-distributed-optimizer; TP=2/PP=1",
+      "ZeRO stage 3",
+      "ZeRO-3 + data parallel (multi-rank); MoE with z3 leaf modules"
+    ],
+    "top_dtype": [
+      "bfloat16 (test uses bf16; GroupedGEMM path)",
+      "fp16 (test uses fp16.enabled=True) with fp32 master + Adam states"
+    ]
+  },
+  "config-toggle-perf-feature": {
+    "category": "config-observability",
+    "recipe": "gpt-perf",
+    "config_hint": "config-gated regressions; run with feature toggled",
+    "n_train_cases": 149,
+    "top_parallelism": [
+      "dynamic inference (in-flight batching) with CUDA graphs, TP-aware",
+      "cuda graphs (cuda_graph_impl=local); inference/training capture path",
+      "dynamic inference engine (batch composition dependent)"
+    ],
+    "top_dtype": [
+      "fp16",
+      "float16/bfloat16"
+    ]
+  },
+  "boolean-guard-misfire": {
+    "category": "config-observability",
+    "recipe": "gpt-perf",
+    "config_hint": "config-gated regressions; run with feature toggled",
+    "n_train_cases": 91,
+    "top_parallelism": [
+      "tensor parallel (tp_size>1), inference only",
+      "MoE with shared experts (moe_shared_expert_intermediate_size set, no overlap/recompute)",
+      "pipeline + virtual pipeline parallelism with flexible/non-uniform PP layout (num_layers_in_first/last_pipeline_stage, account_for_embedding/loss_in_pipeline_split, pipeline_model_parallel_layout)"
+    ],
+    "top_dtype": [
+      "bfloat16 (fused NVLS kernel asserts bf16)",
+      "fp8 delayed scaling recipe"
+    ]
+  },
+  "batch-composition-mismatch": {
+    "category": "config-observability",
+    "recipe": "gpt-perf",
+    "config_hint": "config-gated regressions; run with feature toggled",
+    "n_train_cases": 21,
+    "top_parallelism": [
+      "data-parallel (bin distribution across DP ranks); context-parallel path present",
+      "Torch FSDP2 (use_torch_fsdp2); pipeline_model_parallel_size==1",
+      "optionally SP/CP (TEDotProductAttention required); packing supports micro batch size 1 per test"
+    ],
+    "top_dtype": [
+      "GPTQ-Int4 / AWQ / INT8 quantized (issue-measured)"
+    ]
+  },
+  "wrong-index-dtype-hang": {
+    "category": "config-observability",
+    "recipe": "gpt-perf",
+    "config_hint": "config-gated regressions; run with feature toggled",
+    "n_train_cases": 2,
+    "top_parallelism": [
+      "pipeline parallel",
+      "tensor-parallel with userbuffers comm-GEMM overlap"
+    ],
+    "top_dtype": [
+      "AMP O1 mixed precision (fp32 residual, fp16 x)",
+      "fp16/fp8 (fused reduce-scatter/all-gather kernels)"
+    ]
+  },
+  "failure-detection-gap": {
+    "category": "config-observability",
+    "recipe": "gpt-perf",
+    "config_hint": "config-gated regressions; run with feature toggled",
+    "n_train_cases": 13,
+    "top_parallelism": [
+      "TP1/TP8/TP4-EP4 dynamic inference variants",
+      "data_parallel_size > 1 (DP), affects collective communication paths incl. enable_eplb / EPLB config",
+      "tensor-parallel, world_size 2/4/6/8 (custom all-reduce supported sizes)"
+    ],
+    "top_dtype": [
+      "bf16 + fp8 (tensorwise, hybrid) in cuda-graph case"
+    ]
+  },
+  "profiling-accounting-fix": {
+    "category": "config-observability",
+    "recipe": "gpt-perf",
+    "config_hint": "config-gated regressions; run with feature toggled",
+    "n_train_cases": 32,
+    "top_parallelism": [
+      "pipeline model parallelism (1F1B non-interleaved schedule); triggers when get_num_microbatches() < pipeline_model_parallel_world_size",
+      "pipeline-parallel (1F1B schedule)",
+      "impacts model/tensor-parallel runs (all_reduce over model-parallel group)"
+    ],
+    "top_dtype": [
+      "half (test uses dtype=half)"
+    ]
+  }
+}

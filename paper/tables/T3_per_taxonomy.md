@@ -1,0 +1,14 @@
+| category | detector_v1_recall@2 |
+|---|---|
+| kernel-efficiency | 30.1 |
+| compilation | 14.4 |
+| memory-management | 7.6 |
+| host-overhead | 11.8 |
+| config-observability | 20.5 |
+| concurrency-sync | 11.5 |
+| collective-comm | 6.8 |
+| inference-serving | 6.8 |
+| memory-footprint | 26.8 |
+| io-startup | 7.7 |
+| parallelism-scheduling | 12.5 |
+| n/a | 0.0 |

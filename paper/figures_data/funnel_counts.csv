@@ -1,0 +1,9 @@
+layer,count
+perf_cards,5016
+regression_pairs,622
+pairs_A_tier,502
+pairs_B_tier,120
+negatives,29703
+test_frozen_pos,818
+test_frozen_pairs,116
+test_frozen_neg,954

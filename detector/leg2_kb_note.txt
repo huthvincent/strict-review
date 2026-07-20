@@ -1,0 +1,2 @@
+leg2 knowledge base = 3386 train perf cards compressed to {case_id, taxonomy_leaf, mechanism, symbols, symptom}.
+Built (LLM-free, deterministic) by scripts/leg2_retrieval.py build. File leg2_kb.jsonl (2.3MB) is regenerable and lives in the working dir; noMega variant = leg2_kb_noMega.jsonl (2757 entries).

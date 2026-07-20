@@ -1,0 +1,20 @@
+{
+  "version": "detector_v1",
+  "leg2_k": 5,
+  "leg2_max_turns": 4,
+  "confidence_floor": 0.45,
+  "budget": 2,
+  "adversarial": true,
+  "prompts": {
+    "leg2": "leg2 inline",
+    "leg3": "leg3 inline",
+    "adversarial": "adversarial_verify.v1"
+  },
+  "rules": "ruleset.v1/kept_noMega.jsonl",
+  "_note": "Stage-5 repo-holdout variant: leg1 rules + leg2 KB exclude Megatron-LM. leg3 recipe-map is Megatron-CI-specific by design (kept). Same frozen hyperparams as detector_v1.",
+  "verify_legs": [
+    "leg2"
+  ],
+  "leg3_conf_gate": 0.0,
+  "leg2_kb": "leg2_kb_noMega.jsonl"
+}
