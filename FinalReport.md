@@ -45,8 +45,11 @@ paper/ 素材全部保留，投稿相关事项降级为背景任务。上 HF / G
 
 ## 待办（产品优先排序）
 
-1. **v2 检测器开发**（leg3 主干＋其余组件重设计；multi-agent 模式见
-   `docs/agent_playbook.md`，人人先读宪章）。
+1. **RUN3 已就绪待执行**：作业书 `RUN3_INSTRUCTIONS.md`（红队修订 25 处后定稿，
+   总帽 $450 估 ~$300），已同步 `github.com/huthvincent/GAA/ai_infra_run3.md` 供执行机
+   拉取。内容＝detector v2 正式实现与 dev 全量评测（成功判据钉死在旧口径 ≥25.3%）、
+   74 叶验证表＋微基准模板、考题框架 McNemar 检验、与 v1 的 61 commit 前瞻对决。
+   v2 配方已有本地实证（`detector/v2_prototype/`：引入侧 2/6 vs 裸模型 0/6，$0）。
 2. Rui：判 `audit/` 抽样包（质量校准）与 `detector/reports/prospective_run.md`
    top-20（= 给 NVIDIA 的可用性证据，也是 v2 的误报样本来源）。
 3. 数据集 v0.3：清理负样本重复伪影 → 更新 `dataset/` 镜像 → 同步 HF。
