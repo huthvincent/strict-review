@@ -1,0 +1,546 @@
+{
+ "vllm": [
+  {
+   "file": "vllm/envs.py",
+   "n_incidents": 173,
+   "top_leaves": [
+    "fused-backend-swap",
+    "config-toggle-perf-feature",
+    "ipc-transport-overhead"
+   ]
+  },
+  {
+   "file": "vllm/v1/worker/gpu_model_runner.py",
+   "n_incidents": 172,
+   "top_leaves": [
+    "redundant-hot-path-work",
+    "blocking-d2h-sync",
+    "cudagraph-enablement"
+   ]
+  },
+  {
+   "file": "vllm/config.py",
+   "n_incidents": 142,
+   "top_leaves": [
+    "config-toggle-perf-feature",
+    "cudagraph-enablement",
+    "wasted-compilation-work"
+   ]
+  },
+  {
+   "file": "vllm/engine/arg_utils.py",
+   "n_incidents": 128,
+   "top_leaves": [
+    "config-toggle-perf-feature",
+    "low-precision-state",
+    "boolean-guard-misfire"
+   ]
+  },
+  {
+   "file": "vllm/_custom_ops.py",
+   "n_incidents": 103,
+   "top_leaves": [
+    "fused-backend-swap",
+    "kernel-fusion",
+    "kernel-occupancy-redesign"
+   ]
+  },
+  {
+   "file": "csrc/ops.h",
+   "n_incidents": 74,
+   "top_leaves": [
+    "kernel-fusion",
+    "fused-backend-swap",
+    "low-precision-state"
+   ]
+  },
+  {
+   "file": "vllm/model_executor/layers/fused_moe/layer.py",
+   "n_incidents": 72,
+   "top_leaves": [
+    "fused-backend-swap",
+    "kernel-fusion",
+    "suboptimal-kernel-gate"
+   ]
+  },
+  {
+   "file": "csrc/torch_bindings.cpp",
+   "n_incidents": 72,
+   "top_leaves": [
+    "kernel-fusion",
+    "fused-backend-swap",
+    "host-scalar-loop-work"
+   ]
+  },
+  {
+   "file": "vllm/model_executor/layers/fused_moe/fused_moe.py",
+   "n_incidents": 68,
+   "top_leaves": [
+    "kernel-fusion",
+    "fused-backend-swap",
+    "kernel-config-tuning"
+   ]
+  },
+  {
+   "file": ".buildkite/test-pipeline.yaml",
+   "n_incidents": 67,
+   "top_leaves": [
+    "kernel-fusion",
+    "fused-backend-swap",
+    "config-toggle-perf-feature"
+   ]
+  },
+  {
+   "file": "vllm/model_executor/layers/quantization/fp8.py",
+   "n_incidents": 66,
+   "top_leaves": [
+    "fused-backend-swap",
+    "suboptimal-kernel-gate",
+    "kernel-fusion"
+   ]
+  },
+  {
+   "file": "CMakeLists.txt",
+   "n_incidents": 64,
+   "top_leaves": [
+    "fused-backend-swap",
+    "kernel-fusion",
+    "suboptimal-kernel-gate"
+   ]
+  },
+  {
+   "file": "vllm/worker/model_runner.py",
+   "n_incidents": 61,
+   "top_leaves": [
+    "wasted-compilation-work",
+    "redundant-buffer-copy",
+    "cudagraph-enablement"
+   ]
+  },
+  {
+   "file": "vllm/engine/llm_engine.py",
+   "n_incidents": 56,
+   "top_leaves": [
+    "redundant-hot-path-work",
+    "ipc-transport-overhead",
+    "async-output-overlap"
+   ]
+  },
+  {
+   "file": "vllm/v1/worker/tpu_model_runner.py",
+   "n_incidents": 46,
+   "top_leaves": [
+    "warmup-shape-gap",
+    "wasted-compilation-work",
+    "kernel-config-tuning"
+   ]
+  },
+  {
+   "file": "vllm/v1/attention/backends/mla/common.py",
+   "n_incidents": 44,
+   "top_leaves": [
+    "fused-backend-swap",
+    "low-precision-state",
+    "suboptimal-kernel-gate"
+   ]
+  },
+  {
+   "file": "vllm/utils.py",
+   "n_incidents": 44,
+   "top_leaves": [
+    "redundant-hot-path-work",
+    "profiling-accounting-fix",
+    "gil-held-blocking-call"
+   ]
+  },
+  {
+   "file": "vllm/model_executor/models/qwen2_5_vl.py",
+   "n_incidents": 43,
+   "top_leaves": [
+    "blocking-d2h-sync",
+    "encoder-execution-mode",
+    "fused-backend-swap"
+   ]
+  },
+  {
+   "file": "vllm/v1/attention/backends/flash_attn.py",
+   "n_incidents": 41,
+   "top_leaves": [
+    "cudagraph-enablement",
+    "suboptimal-kernel-gate",
+    "kernel-config-tuning"
+   ]
+  },
+  {
+   "file": "vllm/v1/core/sched/scheduler.py",
+   "n_incidents": 40,
+   "top_leaves": [
+    "redundant-hot-path-work",
+    "prefix-state-caching",
+    "quadratic-python-structure"
+   ]
+  },
+  {
+   "file": "vllm/model_executor/layers/quantization/compressed_tensors/compressed_tensors_moe.py",
+   "n_incidents": 39,
+   "top_leaves": [
+    "fused-backend-swap",
+    "kernel-fusion",
+    "suboptimal-kernel-gate"
+   ]
+  },
+  {
+   "file": "vllm/v1/engine/core.py",
+   "n_incidents": 39,
+   "top_leaves": [
+    "redundant-hot-path-work",
+    "ipc-transport-overhead",
+    "async-output-overlap"
+   ]
+  },
+  {
+   "file": "vllm/core/scheduler.py",
+   "n_incidents": 39,
+   "top_leaves": [
+    "batch-composition-mismatch",
+    "quadratic-python-structure",
+    "prefix-state-caching"
+   ]
+  },
+  {
+   "file": "vllm/platforms/cuda.py",
+   "n_incidents": 38,
+   "top_leaves": [
+    "fused-backend-swap",
+    "suboptimal-kernel-gate",
+    "low-precision-state"
+   ]
+  },
+  {
+   "file": "vllm/sequence.py",
+   "n_incidents": 38,
+   "top_leaves": [
+    "redundant-hot-path-work",
+    "speculative-decoding",
+    "async-output-overlap"
+   ]
+  },
+  {
+   "file": "vllm/v1/worker/gpu_worker.py",
+   "n_incidents": 37,
+   "top_leaves": [
+    "warmup-shape-gap",
+    "async-output-overlap",
+    "cudagraph-enablement"
+   ]
+  },
+  {
+   "file": "vllm/platforms/rocm.py",
+   "n_incidents": 37,
+   "top_leaves": [
+    "suboptimal-kernel-gate",
+    "fused-backend-swap",
+    "boolean-guard-misfire"
+   ]
+  },
+  {
+   "file": "vllm/model_executor/layers/quantization/utils/fp8_utils.py",
+   "n_incidents": 37,
+   "top_leaves": [
+    "suboptimal-kernel-gate",
+    "fused-backend-swap",
+    "kernel-fusion"
+   ]
+  },
+  {
+   "file": "vllm/model_executor/models/qwen2_vl.py",
+   "n_incidents": 37,
+   "top_leaves": [
+    "blocking-d2h-sync",
+    "fused-backend-swap",
+    "suboptimal-kernel-gate"
+   ]
+  },
+  {
+   "file": "vllm/v1/attention/backends/flashinfer.py",
+   "n_incidents": 36,
+   "top_leaves": [
+    "suboptimal-kernel-gate",
+    "cudagraph-enablement",
+    "fused-backend-swap"
+   ]
+  }
+ ],
+ "Megatron-LM": [
+  {
+   "file": "megatron/training/arguments.py",
+   "n_incidents": 128,
+   "top_leaves": [
+    "cudagraph-enablement",
+    "missing-comm-overlap",
+    "config-toggle-perf-feature"
+   ]
+  },
+  {
+   "file": "megatron/core/transformer/transformer_config.py",
+   "n_incidents": 78,
+   "top_leaves": [
+    "kernel-fusion",
+    "cudagraph-enablement",
+    "missing-comm-overlap"
+   ]
+  },
+  {
+   "file": "megatron/arguments.py",
+   "n_incidents": 77,
+   "top_leaves": [
+    "config-toggle-perf-feature",
+    "missing-comm-overlap",
+    "activation-recompute"
+   ]
+  },
+  {
+   "file": "megatron/core/transformer/attention.py",
+   "n_incidents": 53,
+   "top_leaves": [
+    "suboptimal-kernel-gate",
+    "kernel-fusion",
+    "cudagraph-enablement"
+   ]
+  },
+  {
+   "file": "megatron/model/transformer.py",
+   "n_incidents": 53,
+   "top_leaves": [
+    "suboptimal-kernel-gate",
+    "fused-backend-swap",
+    "activation-recompute"
+   ]
+  },
+  {
+   "file": "megatron/training.py",
+   "n_incidents": 47,
+   "top_leaves": [
+    "missing-comm-overlap",
+    "buffer-sizing-layout",
+    "fsdp-zero-pipeline-break"
+   ]
+  },
+  {
+   "file": "megatron/core/inference/contexts/dynamic_context.py",
+   "n_incidents": 45,
+   "top_leaves": [
+    "cudagraph-enablement",
+    "kv-cache-capacity",
+    "uvm-managed-pagefault"
+   ]
+  },
+  {
+   "file": "megatron/core/transformer/transformer_layer.py",
+   "n_incidents": 39,
+   "top_leaves": [
+    "cudagraph-enablement",
+    "kernel-fusion",
+    "cudagraph-incompatibility"
+   ]
+  },
+  {
+   "file": "megatron/training/training.py",
+   "n_incidents": 37,
+   "top_leaves": [
+    "cudagraph-enablement",
+    "redundant-load-startup-work",
+    "redundant-collective"
+   ]
+  },
+  {
+   "file": "megatron/core/pipeline_parallel/schedules.py",
+   "n_incidents": 37,
+   "top_leaves": [
+    "missing-comm-overlap",
+    "cudagraph-enablement",
+    "boolean-guard-misfire"
+   ]
+  },
+  {
+   "file": "megatron/core/transformer/transformer_block.py",
+   "n_incidents": 35,
+   "top_leaves": [
+    "cudagraph-enablement",
+    "kernel-fusion",
+    "offload-management"
+   ]
+  },
+  {
+   "file": "megatron/core/transformer/cuda_graphs.py",
+   "n_incidents": 34,
+   "top_leaves": [
+    "cudagraph-enablement",
+    "cudagraph-incompatibility",
+    "shared-workspace-reuse"
+   ]
+  },
+  {
+   "file": "megatron/core/extensions/transformer_engine.py",
+   "n_incidents": 32,
+   "top_leaves": [
+    "kernel-fusion",
+    "unfused-transpose-copy",
+    "suboptimal-kernel-gate"
+   ]
+  },
+  {
+   "file": "megatron/core/transformer/custom_layers/transformer_engine.py",
+   "n_incidents": 30,
+   "top_leaves": [
+    "missing-comm-overlap",
+    "config-toggle-perf-feature",
+    "kernel-fusion"
+   ]
+  },
+  {
+   "file": "megatron/core/inference/text_generation_controllers/text_generation_controller.py",
+   "n_incidents": 29,
+   "top_leaves": [
+    "cudagraph-enablement",
+    "host-scalar-loop-work",
+    "suboptimal-kernel-gate"
+   ]
+  },
+  {
+   "file": "megatron/core/tensor_parallel/layers.py",
+   "n_incidents": 29,
+   "top_leaves": [
+    "suboptimal-kernel-gate",
+    "missing-comm-overlap",
+    "redundant-collective"
+   ]
+  },
+  {
+   "file": "megatron/core/parallel_state.py",
+   "n_incidents": 28,
+   "top_leaves": [
+    "mismatched-collective-config",
+    "reshard-tradeoff",
+    "rank-placement-locality"
+   ]
+  },
+  {
+   "file": "megatron/core/model_parallel_config.py",
+   "n_incidents": 27,
+   "top_leaves": [
+    "missing-comm-overlap",
+    "mismatched-collective-config",
+    "offload-management"
+   ]
+  },
+  {
+   "file": "megatron/core/transformer/moe/moe_utils.py",
+   "n_incidents": 26,
+   "top_leaves": [
+    "kernel-fusion",
+    "buffer-sizing-layout",
+    "cudagraph-enablement"
+   ]
+  },
+  {
+   "file": "examples/inference/gpt/gpt_dynamic_inference.py",
+   "n_incidents": 25,
+   "top_leaves": [
+    "kv-cache-capacity",
+    "cudagraph-enablement",
+    "uvm-managed-pagefault"
+   ]
+  },
+  {
+   "file": "tests/unit_tests/inference/engines/test_dynamic_engine.py",
+   "n_incidents": 25,
+   "top_leaves": [
+    "cudagraph-enablement",
+    "kv-cache-capacity",
+    "fused-backend-swap"
+   ]
+  },
+  {
+   "file": "megatron/core/inference/engines/dynamic_engine.py",
+   "n_incidents": 25,
+   "top_leaves": [
+    "cudagraph-enablement",
+    "kv-cache-capacity",
+    "host-scalar-loop-work"
+   ]
+  },
+  {
+   "file": "megatron/core/transformer/moe/token_dispatcher.py",
+   "n_incidents": 24,
+   "top_leaves": [
+    "blocking-d2h-sync",
+    "kernel-fusion",
+    "buffer-sizing-layout"
+   ]
+  },
+  {
+   "file": "megatron/core/transformer/mlp.py",
+   "n_incidents": 24,
+   "top_leaves": [
+    "kernel-fusion",
+    "suboptimal-kernel-gate",
+    "missing-comm-overlap"
+   ]
+  },
+  {
+   "file": "tests/unit_tests/inference/contexts/test_dynamic_context.py",
+   "n_incidents": 22,
+   "top_leaves": [
+    "kv-cache-capacity",
+    "cudagraph-enablement",
+    "uvm-managed-pagefault"
+   ]
+  },
+  {
+   "file": "pretrain_gpt.py",
+   "n_incidents": 22,
+   "top_leaves": [
+    "redundant-load-startup-work",
+    "config-toggle-perf-feature",
+    "missing-comm-overlap"
+   ]
+  },
+  {
+   "file": "megatron/core/models/gpt/gpt_model.py",
+   "n_incidents": 22,
+   "top_leaves": [
+    "missing-comm-overlap",
+    "cudagraph-enablement",
+    "kernel-fusion"
+   ]
+  },
+  {
+   "file": "megatron/schedules.py",
+   "n_incidents": 22,
+   "top_leaves": [
+    "deferred-free-peak",
+    "memory-leak-unpruned-state",
+    "skip-saved-tensor-backward"
+   ]
+  },
+  {
+   "file": "tests/unit_tests/inference/text_generation_controllers/test_simple_text_generation_controller.py",
+   "n_incidents": 21,
+   "top_leaves": [
+    "host-scalar-loop-work",
+    "kv-cache-capacity",
+    "cudagraph-enablement"
+   ]
+  },
+  {
+   "file": "megatron/core/distributed/distributed_data_parallel.py",
+   "n_incidents": 21,
+   "top_leaves": [
+    "missing-comm-overlap",
+    "buffer-sizing-layout",
+    "cudagraph-enablement"
+   ]
+  }
+ ]
+}

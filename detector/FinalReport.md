@@ -27,6 +27,13 @@ $0.233/item（比 strict-review 便宜 33%）。诚实混合结果。
   ——其中机制级 finding（如 #5607 默认路由策略三处齐改、#5349 每 microbatch 阻塞
   all-gather）是给 NVIDIA 的 demo 素材。
 
+## v2 原型烟雾测试（2026-07-19，本地，$0）
+
+`v2_prototype/`：v2 配方（手册常驻＋仓库画像＋父快照上下文核验）在 dev 小样上
+与裸模型对照——**引入 commit 场景 2/6 vs 0/6**（含 1 个低可检），误报均 0/4；
+另发现 benchmark 考题框架伪影（regfix case 用修复 commit 提问导致方向错位 MISS，
+可能压低了 RUN2 全体选手的北极星分）。详见 `v2_prototype/SMOKE_RESULTS.md`。
+
 ## 已知欠账
 
 leg2_tuning / leg3_routing 两份专项报告缺失；leg2 的"胜 baseline(b)≥30%"判据未宣判；
