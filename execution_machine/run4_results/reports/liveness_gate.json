@@ -1,0 +1,9 @@
+{
+  "scoring": "run4.v3",
+  "pos_fire": 18,
+  "neg_fp": 1,
+  "route_inv": 0,
+  "leak": 0,
+  "pass": true,
+  "unit_cost": 0.3251
+}

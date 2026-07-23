@@ -1,0 +1,23 @@
+{
+  "version": "detector_v2_1",
+  "budget": 2,
+  "max_turns": 5,
+  "large_commit_lines": 400,
+  "large_commit_files": 10,
+  "deep_top_k": 2,
+  "scan_block_char_budget": 12000,
+  "unverified_discount": 0.7,
+  "formal_severity": [
+    "critical",
+    "important"
+  ],
+  "formal_conf_min": 0.5,
+  "assets": {
+    "handbook": "knowledge/handbook.v1.jsonl",
+    "repo_profile": "knowledge/repo_profile.v1.json",
+    "leaf_verification": "knowledge/leaf_verification.v1.json"
+  },
+  "_note": "FROZEN 2026-07-23 (RUN4 v3 S1). CONTRACT A-E faithful (self-check: reports/contract_selfcheck.md). Liveness gate PASS under run4.v3: 18/18 severe-fire, 1/7 neg FP, route-inv 0, leak 0. conf_final=conf_raw*0.7 if unverified non-empty, used ONLY for budget-2 sort. NO CHANGES past freeze.",
+  "frozen": true,
+  "scoring": "run4.v3: recall=severe no-conf-threshold (metrics.v1); FP=severe&conf_raw>=0.5; conf_final sort-only"
+}

@@ -1,0 +1,117 @@
+{
+  "window": "2026-07-20..(fetch 2026-07-23)",
+  "n_unseen": 22,
+  "note": "RUN4 §4.2 new prospective window, 22>=20",
+  "commits": [
+    {
+      "sha": "602fad039a9617ad3d66e1a19f0066f14ebb537c",
+      "date": "2026-07-22T14:31:38-07:00",
+      "subject": "Inference: Do not let prompt tokens return from the engine, unless requested (#5918)"
+    },
+    {
+      "sha": "8d16c6729541f3b4f7d875043266737fdcb194ee",
+      "date": "2026-07-22T14:05:25-07:00",
+      "subject": "[Main] Numerical fix for moe single grouped weight with fp8 fp4 primary weight and grad norm spikes (#5487)"
+    },
+    {
+      "sha": "b842f59f77f3fbe3c5868ba4abc544705485c156",
+      "date": "2026-07-22T13:45:32-07:00",
+      "subject": "ci: Integrates the latest config-driven nemo-ci-triage Slack and Linear workflow (#5957)"
+    },
+    {
+      "sha": "e4ea85970b2699b8506631d45acd6d1579f155f0",
+      "date": "2026-07-22T13:43:16-07:00",
+      "subject": "[Main] Numerical fix for FC2 expert bias scales when using `use_transformer_engine_op_fuser` (#5850)"
+    },
+    {
+      "sha": "890247c0944d6747b20953acf328f878f646ee1d",
+      "date": "2026-07-22T15:55:56-04:00",
+      "subject": "fix(resharding): stabilize NVSHMEM refit copy service (#5915)"
+    },
+    {
+      "sha": "96d41593057c027615fbd769f4ce435a6fbfd251",
+      "date": "2026-07-22T15:55:34-04:00",
+      "subject": "Refresh BERT H100 golden values (#5953)"
+    },
+    {
+      "sha": "cc5b09239c3f39c93f290f10be099d687bce75eb",
+      "date": "2026-07-22T12:34:21-07:00",
+      "subject": "Reduce MimoOptimizer update-success across the world for cross-grid consensus (#5331)"
+    },
+    {
+      "sha": "d207685b46718e0cafe617306aec8f442c59e0a0",
+      "date": "2026-07-22T05:42:16-07:00",
+      "subject": "Reuse profiler helpers in mFSDP v2 symmetric memory tests (#5873)"
+    },
+    {
+      "sha": "a046281960c13d034267cf15cc3b689048a1be45",
+      "date": "2026-07-22T09:49:27Z",
+      "subject": "chore: rotate oncall schedule"
+    },
+    {
+      "sha": "ddaa315fef1d597b2783f16ada4e9d88c381d191",
+      "date": "2026-07-21T23:14:59-05:00",
+      "subject": "fix: Harden Claude GitHub workflows (#5408)"
+    },
+    {
+      "sha": "58bf14e9e68915a5e0c7d70451620e6e713c07d5",
+      "date": "2026-07-21T06:59:30-07:00",
+      "subject": "Test mFSDP v2 overlap with default and symmetric memory (#5859)"
+    },
+    {
+      "sha": "368fa88e382b274c8fc12af851331cc1d30d69cc",
+      "date": "2026-07-21T00:30:00-07:00",
+      "subject": "Log app_finish_time and app_train_loop_finish_time on early-exit path (#5864)"
+    },
+    {
+      "sha": "12c05a2d89799da77a8532ee1bc4b3c46e9cf426",
+      "date": "2026-07-20T23:45:11-05:00",
+      "subject": "Add compatibility between training CGs and CP>1 (#5894)"
+    },
+    {
+      "sha": "7012adb81765d91d91e404eb480ef614e6423027",
+      "date": "2026-07-20T22:34:39-04:00",
+      "subject": "Stabilize perf warmup (#5913)"
+    },
+    {
+      "sha": "337c061c9c9a1d290ec13a66e4cbd1fc082f3dc4",
+      "date": "2026-07-20T16:02:46-07:00",
+      "subject": "Add fully_shard_optimizer for mixed-precision FSDP (#5411)"
+    },
+    {
+      "sha": "5a88c57bdcd67dd4262a4caf89144696f5878fa1",
+      "date": "2026-07-21T02:23:01+04:00",
+      "subject": "Support HSDP deferred DP-outer gradient reduction (#5743)"
+    },
+    {
+      "sha": "cfb116f28875cb69868b2c3f509082349443ef91",
+      "date": "2026-07-20T14:55:17-07:00",
+      "subject": "Add NeMo waveform audio processor (data-side feature extractor) (#5570)"
+    },
+    {
+      "sha": "bd0872dda07a38d1f03c54cdac73689229e07101",
+      "date": "2026-07-20T23:11:48+03:00",
+      "subject": "Reduce boilerplate around MultiStorageClient feature checks (#5269)"
+    },
+    {
+      "sha": "e443bd3adbe94ff754dbed8da48f0a5bec585c03",
+      "date": "2026-07-20T13:02:54-07:00",
+      "subject": "ci: integrate nemo-ci-triage with linear issues management for gitlab failures (#5881)"
+    },
+    {
+      "sha": "f41ec54958a0e4962c45cefb108a1c60a6a93beb",
+      "date": "2026-07-20T14:26:19-04:00",
+      "subject": "Overlap async scheduling phases (#5549)"
+    },
+    {
+      "sha": "1c742862114775b3830523c6cd55f3b6e72b68dd",
+      "date": "2026-07-20T12:13:05-04:00",
+      "subject": "Update active oncall to Phlip79 this week (#5896)"
+    },
+    {
+      "sha": "207be1fd1713f95a2b4bbdcd8c2f9f7569ea8ba1",
+      "date": "2026-07-20T12:42:54Z",
+      "subject": "chore(beep boop 🤖): Bump  (main) (2026-07-20)"
+    }
+  ]
+}

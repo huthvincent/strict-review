@@ -1,0 +1,30 @@
+{
+  "overall2": [
+    116,
+    150
+  ],
+  "pair2": [
+    8,
+    30
+  ],
+  "fpr": [
+    23,
+    100
+  ],
+  "route_hit": 105,
+  "deep_hit": 11,
+  "route_leaf_agree": [
+    64,
+    105
+  ],
+  "sentinel_gap_pp": 15.7,
+  "gates": {
+    "overall2": true,
+    "pair2": true,
+    "fpr15": false,
+    "fpr10": false
+  },
+  "errors": 0,
+  "gate_pos": 0,
+  "judge_cost": 3.1
+}

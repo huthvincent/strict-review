@@ -1,0 +1,19 @@
+{
+  "smoke_dev_overlap": [
+    "case:Megatron-LM@a0b9c16b73cd",
+    "case:vllm@0e60c925cf8c",
+    "case:vllm@995e9a209e68",
+    "case:vllm@c88ea8338b9a",
+    "case:vllm@dc5fa77a4eb6",
+    "neg:Megatron-LM@f14d1614e096",
+    "neg:TransformerEngine@c4175fcad075",
+    "neg:vllm@0727cc9ecf2e",
+    "neg:vllm@4ae218c122f7",
+    "neg:vllm@a0a984ac2e45",
+    "neg:vllm@ac900c89bba7",
+    "neg:vllm@bb17e8f11c38"
+  ],
+  "n_overlap": 12,
+  "mac40_views3_transferred": false,
+  "note": "Mac-40 list (views3.json) not transferred to working dir (on Rui Mac); only smoke-25 overlap computable"
+}
