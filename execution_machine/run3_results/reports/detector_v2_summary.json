@@ -1,0 +1,46 @@
+{
+  "overall2_old": [
+    2,
+    150
+  ],
+  "pair2_old": [
+    0,
+    30
+  ],
+  "fpr": [
+    0,
+    100
+  ],
+  "overall2_corrected": [
+    2,
+    150
+  ],
+  "n_swapped": 24,
+  "collisions": 3,
+  "gates": {
+    "overall2": false,
+    "pair2": false,
+    "fpr15": true,
+    "fpr10": true
+  },
+  "strata": {
+    "high": [
+      0,
+      40
+    ],
+    "medium": [
+      1,
+      40
+    ],
+    "low": [
+      1,
+      40
+    ],
+    "pair": [
+      0,
+      30
+    ]
+  },
+  "judge_cost": 2.58,
+  "gated_positives": 0
+}

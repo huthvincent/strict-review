@@ -1,0 +1,28 @@
+{
+  "version": "detector_v2",
+  "large_commit_lines": 400,
+  "large_commit_files": 10,
+  "decomp_max_groups": 6,
+  "decomp_max_turns": 2,
+  "handbook_leaves_min": 10,
+  "handbook_leaves_max": 20,
+  "budget": 2,
+  "max_turns": 5,
+  "adversarial": false,
+  "assets": {
+    "handbook": "knowledge/handbook.v1.jsonl",
+    "repo_profile": "knowledge/repo_profile.v1.json",
+    "leaf_verification": "knowledge/leaf_verification.v1.json"
+  },
+  "gate": {
+    "exclude_dirs": [
+      "tests",
+      "docs",
+      "examples",
+      ".github"
+    ],
+    "recipe_cfg_regex": "(recipe|\\.ya?ml$|config|args|arguments|envs?\\.py|defaults?)"
+  },
+  "_note": "FROZEN 2026-07-23 (RUN3 S3). No adversarial layer (RUN2 ablation). Profile gate: all-excluded-dirs AND no recipe/config path (train mis-kill 0.09% < 2%). Large-commit decomp: >400 lines or >10 files -> per-file groups (<=6), sub-review max_turns=2 (cost fix: big-commit USD1.83->USD1.00, re-smoked). Handbook resident (10-20 leaves via profile+route). budget=2. Smoke 25 items (18 dev_calib case seed 20260720 + 7 dev_tune neg): leak0/gate1/err0, USD0.49/item. NO CHANGES past this freeze.",
+  "frozen": true
+}

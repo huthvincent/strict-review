@@ -1,0 +1,13 @@
+{
+  "fix_case_diffchars": {
+    "n": 135,
+    "median": 2342,
+    "mean": 5118
+  },
+  "inducing_diffchars": {
+    "n": 135,
+    "median": 20246,
+    "mean": 17509
+  },
+  "note": "diff 大小（字符）分布，对比 fix-case 视图 vs inducing 视图（converted 子集）"
+}

@@ -1,0 +1,36 @@
+{
+  "kappa": 1.0,
+  "kappa_agree": 1.0,
+  "xfamily_agree": 1.0,
+  "n_xf": 22,
+  "v2": {
+    "recall2": [
+      1,
+      50
+    ],
+    "fpr": [
+      0,
+      30
+    ]
+  },
+  "ablate_handbook": {
+    "recall2": [
+      4,
+      50
+    ],
+    "fpr": [
+      0,
+      30
+    ]
+  },
+  "ablate_tools": {
+    "recall2": [
+      1,
+      50
+    ],
+    "fpr": [
+      0,
+      30
+    ]
+  }
+}

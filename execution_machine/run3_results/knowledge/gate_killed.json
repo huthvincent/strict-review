@@ -1,0 +1,33 @@
+{
+  "n_train_pos": 3386,
+  "n_killed": 3,
+  "rate": 0.0009,
+  "killed": [
+    {
+      "case_id": "Megatron-LM@dfb78dca320d",
+      "leaf": "mismatched-collective-config",
+      "changed_files": [
+        "examples/run_simple_mcore_train_loop.py"
+      ]
+    },
+    {
+      "case_id": "Megatron-LM@94dbfd1cd35f",
+      "leaf": "stream-serialization",
+      "changed_files": [
+        "examples/pretrain_bert_distributed.sh",
+        "examples/pretrain_bert_distributed_with_mp.sh",
+        "examples/pretrain_gpt_distributed.sh",
+        "examples/pretrain_gpt_distributed_with_mp.sh",
+        "examples/pretrain_t5_distributed.sh",
+        "examples/pretrain_t5_distributed_with_mp.sh"
+      ]
+    },
+    {
+      "case_id": "vllm@8820821b5912",
+      "leaf": "async-output-overlap",
+      "changed_files": [
+        "examples/lmcache/disagg_prefill_lmcache_v1/disagg_proxy_server.py"
+      ]
+    }
+  ]
+}

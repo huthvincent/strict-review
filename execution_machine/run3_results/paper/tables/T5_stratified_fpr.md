@@ -1,0 +1,8 @@
+| negative_type | FP | N | rate% | CI_lo | CI_hi |
+|---|---|---|---|---|---|
+| false-signal-perf-infra | 5 | 42 | 11.9 | 5.2 | 25.0 |
+| false-signal-smoke-ci | 8 | 150 | 5.3 | 2.7 | 10.2 |
+| hard-negative-hotfile | 105 | 459 | 22.9 | 19.3 | 26.9 |
+| hard-negative-lookalike | 1 | 3 | 33.3 | 6.1 | 79.2 |
+| random-benign | 23 | 300 | 7.7 | 5.2 | 11.2 |
+| _weighted_total | 142 | 954 | 14.9 | 12.8 | 17.3 |

@@ -1,0 +1,20 @@
+{
+  "gpu_available": false,
+  "records": [
+    {
+      "leaf": "algorithmic-compute-reduction",
+      "train_case_id": "Megatron-LM@40a4674478a5",
+      "template": "knowledge/microbench_templates/algorithmic-compute-reduction.py",
+      "status": "repo-install-blocked, template-only smoke (parses + pytest-collectable)",
+      "ok": true
+    },
+    {
+      "leaf": "batch-composition-mismatch",
+      "train_case_id": "Megatron-LM@bacd16418091",
+      "template": "knowledge/microbench_templates/batch-composition-mismatch.py",
+      "status": "repo-install-blocked, template-only smoke (parses + pytest-collectable)",
+      "ok": true
+    }
+  ],
+  "ts": "2026-07-23T00:03:01.447107+00:00"
+}

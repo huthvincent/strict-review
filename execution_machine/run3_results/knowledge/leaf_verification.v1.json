@@ -1,0 +1,1269 @@
+{
+  "generated": "2026-07-23T00:03:01.366857+00:00",
+  "n_leaves": 74,
+  "kind_distribution": {
+    "route-recipe": 15,
+    "microbench": 58,
+    "not-verifiable-yet": 1
+  },
+  "table": [
+    {
+      "leaf": "activation-recompute",
+      "category": "memory-footprint",
+      "verify_kind": "microbench",
+      "reason": "",
+      "recipe": "gpt-perf-dp8",
+      "config_hint": "activation/param memory; OOM threshold",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:05.870152+00:00",
+        "cost": 0.01896
+      }
+    },
+    {
+      "leaf": "algorithmic-compute-reduction",
+      "category": "kernel-efficiency",
+      "verify_kind": "microbench",
+      "reason": "This leaf is about wasted algorithmic work in a single op/kernel — computing an expensive reduction (softmax/log_softmax, full O(V log V) sort) over the entire tensor then slicing down, or iterating the full logical range (all KV tiles / all vocab / all frames) when causal masking, top-k, or capacity caps mean most output is discarded. The regression is a compute-complexity difference that manifests deterministically on a single device: comparing \"reduce-then-slice\" vs \"slice-then-reduce\" (or full-sort vs top-k) shows a wall-clock/FLOP gap that scales with the discarded fraction (vocab size V, seq_len, num experts). No multi-GPU, sharding, or distributed collectives are needed to surface it — a single-device microbench isolating the op at realistic shapes cleanly reproduces the regression. The leg3 route-recipe (module_performance) would also observe it but confounds it with framework/module overhead; a targeted microbench is the more direct and cheaper witness.",
+      "recipe": "module_performance",
+      "config_hint": "per-module kernel microbench",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:05.865043+00:00",
+        "cost": 0.01886
+      }
+    },
+    {
+      "leaf": "allocator-config",
+      "category": "memory-management",
+      "verify_kind": "microbench",
+      "reason": "These allocator-config anti-patterns are single-device caching-allocator behaviors and can be reproduced without distribution: (1) removing eager zeros_like pre-allocation of optimizer state re-fragments the caching allocator — observable as increased reserved-vs-allocated gap / peak reserved memory on one GPU; (2) per-iteration empty_cache() forces a device sync and drops reserved blocks — observable as added per-iter latency and re-allocation churn. The routed leg3 recipe (gpt-perf-dp8) only measures aggregate peak-mem under DP8 and would conflate NCCL/comm memory with the allocator regression; a microbench isolates the true single-device cause. The NCCL_CUMEM_ENABLE env-default flip is the one facet that's genuinely multi-GPU, but the dominant, cleanly-attributable signals here are single-device and better caught by a targeted microbench that measures fragmentation and per-iter sync cost directly.",
+      "recipe": "gpt-perf-dp8",
+      "config_hint": "allocator/fragmentation; peak-mem under DP8",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:06.432946+00:00",
+        "cost": 0.01902
+      }
+    },
+    {
+      "leaf": "async-io-overlap",
+      "category": "io-startup",
+      "verify_kind": "microbench",
+      "reason": "The mechanism here is fundamentally single-thread/single-process serialization: I/O (checkpoint disk writes, record decode, numpy→tensor conversion) and preprocessing (deserialization, cache lookup, grammar init) are executed inline on the critical path instead of overlapped via a worker/prefetch stage. All three sub-patterns are observable on one host by comparing inline vs. background-overlapped execution and measuring how much I/O/prep time leaks into wall-clock step time. No multi-GPU/distributed scale is required to expose the stall — the recipe route (gpt-perf, time-to-first-step) would only measure the aggregate symptom, whereas a microbench isolates the overlap defect directly.",
+      "recipe": "gpt-perf",
+      "config_hint": "dataloader/ckpt startup; time-to-first-step",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:06.167090+00:00",
+        "cost": 0.01881
+      }
+    },
+    {
+      "leaf": "async-output-overlap",
+      "category": "inference-serving",
+      "verify_kind": "microbench",
+      "reason": "The core mechanism—a blocking D→H sync (.cpu()/device-sync on the sampled-token tensor) in the model-runner output path preventing overlap with the next forward step—is a single-GPU, single-process phenomenon. It doesn't require multi-card or distributed scale to manifest: the host-side stall per decode step and the lost copy/compute overlap show up on one device. We can construct an abstract microbench that emulates a forward-step compute kernel followed by producing a small \"sampled token\" tensor, then compare (a) an explicit synchronous .cpu() materialization each step vs (b) an async path using a dedicated torch.cuda.Stream + Event where the D→H copy is enqueued and only waited on later. Measuring per-step latency / effective decode throughput exposes the bubble. Note leg3's gpt-perf route can serve as an end-to-end proxy, but the sync itself is cleanly isolatable single-GPU, so a microbench gives a sharper, cheaper signal for this leaf.",
+      "recipe": "gpt-perf",
+      "config_hint": "decode throughput/latency (proxy via gpt-perf)",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:06.277261+00:00",
+        "cost": 0.01896
+      }
+    },
+    {
+      "leaf": "batch-composition-mismatch",
+      "category": "config-observability",
+      "verify_kind": "microbench",
+      "reason": "The core mechanism is a pure host-side accounting bug: batch admission bounds computed against the wrong unit (counting seq_groups via len(self.running) instead of summing sequences per group), or per-batch structures statically sized to max_batch_size rather than the actual dynamic batch. This manifests deterministically on a single machine with a synthetic scheduler/batch-admission function — no multi-GPU or distributed scale is needed to expose over/under-fill. We can time and, more importantly, instrument the admission path with mixed group compositions (n=1 vs n>1 beam/parallel-sampling groups) and observe divergence between admitted-sequence count and max_num_seqs, plus the padding/host-sync overhead from mis-sized static tensors. The gpt-perf recipe would only surface the second-order throughput effect at scale; the primitive is cheaply isolatable here.",
+      "recipe": "gpt-perf",
+      "config_hint": "config-gated regressions; run with feature toggled",
+      "observed_metric": null,
+      "microbench_target": "The batch-admission / can_schedule step that decides how many seq_groups enter the running batch (compares accumulated sequence count against max_num_seqs), plus construction of the per-batch params/tensor whose leading dim is derived from max_batch_size vs. actual batch size. Time both the admission decision loop and the tensor-build/pad step.",
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:06.503716+00:00",
+        "cost": 0.01889
+      }
+    },
+    {
+      "leaf": "blocking-d2h-sync",
+      "category": "concurrency-sync",
+      "verify_kind": "microbench",
+      "reason": "The mechanism (`.item()`/`.tolist()`/`.cpu()` or building a tensor from GPU scalars / using a GPU scalar as a Python slice bound inside a per-step hot path) forces a device→host sync that stalls the pipeline every iteration. This is a single-GPU, single-process pathology: it does not require multi-card or distributed scale to manifest, since the stall is per-iteration on one stream. It's directly measurable by timing a hot-path fragment that reads a GPU scalar back to host vs. a device-only equivalent, observing the added wall-clock latency and lost overlap. The leg3 determinism-perf recipe hint about stream/sync ordering is orthogonal — it surfaces stalls at scale but the root D2H sync reproduces locally, so a microbench is the tighter, cheaper verification.",
+      "recipe": "determinism-perf",
+      "config_hint": "stream/sync ordering; determinism harness exposes stalls",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:06.889362+00:00",
+        "cost": 0.01927
+      }
+    },
+    {
+      "leaf": "boolean-guard-misfire",
+      "category": "config-observability",
+      "verify_kind": "microbench",
+      "reason": "This leaf is fundamentally a single-process control-flow bug: a guard that evaluates truthiness/comparison incorrectly (zero CUDA tensor as bool, size-int used as flag, `>= -1` sentinel) silently steers execution onto the wrong branch (e.g. forcing a microbatched/pipelined/slow path, or skipping a fused path). The misfire is observable on one machine because the divergence is in the branch taken, not in multi-rank scaling — you can measure the wall-time/throughput difference between the two branches by toggling the underlying config that feeds the guard and timing the affected callable with the guard value set to both the intended-disabled and intended-enabled states. If the guard is misfiring, the \"disabled\" config will show the same (wrong) latency as the \"enabled\" one, or the fused fast path will never engage. leg3's route-recipe (gpt-perf, run with feature toggled) is a heavier confirmation for cases needing full-model config context; the microbench is the cheaper local repro that directly exercises the branch predicate. Kept microbench as primary since a boolean-guard misfire does not require distributed scale to reproduce.",
+      "recipe": "gpt-perf",
+      "config_hint": "config-gated regressions; run with feature toggled",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:07.145146+00:00",
+        "cost": 0.01903
+      }
+    },
+    {
+      "leaf": "buffer-sizing-layout",
+      "category": "memory-management",
+      "verify_kind": "microbench",
+      "reason": "This leaf has two distinct sub-mechanisms, and the dominant one is single-node reproducible. (1) Coarse upper-bound buffer sizing (e.g. padding to full model max_len instead of max_prompt+max_gen, or per-request KV/encoder sizing by a batch-total budget rather than per-item token count) manifests as excess peak allocation and wasted host/device memory on a *single* forward/decode step — no distribution needed. (2) Unaligned contiguous packing offsets forcing cuBLAS/TE/TMA onto a slower path is a kernel-efficiency effect measurable on one GPU by timing a GEMM/matmul with aligned vs. off-by-N base offsets. The leg3 route-recipe (gpt-perf-dp8, allocator/fragmentation, peak-mem under DP8) targets only the fragmentation-under-DP-divisibility facet, which does need scale; but the core sizing/alignment anti-pattern surfaces locally, so a microbench is the right primary verification. Recommend the DP8 recipe as a secondary check for the dp_world_size-divisibility case.",
+      "recipe": "gpt-perf-dp8",
+      "config_hint": "allocator/fragmentation; peak-mem under DP8",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:05.918588+00:00",
+        "cost": 0.01903
+      }
+    },
+    {
+      "leaf": "collective-payload-reduction",
+      "category": "collective-comm",
+      "verify_kind": "route-recipe",
+      "reason": "This leaf concerns collective-payload-reduction anti-patterns (gather_object onto rank 0, all_reducing padded global/full-vocab zero tensors, all-gathering full-precision activations before quantization). The performance/memory impact scales with world_size × payload and only manifests across multiple ranks/nodes with real TP/PP sharding — a single-machine microbench cannot expose the O(world_size × payload) serialization/peak-mem or collective-time regression, nor reproduce the padded-reduce-vs-gather trade-off at scale. Existing leg3 routing already targets this: run the repo's multi-node performance CI and watch all-reduce/all-gather time.",
+      "recipe": "gpt-perf",
+      "config_hint": "multi-node TP/PP; instrument all-reduce/all-gather time and collective payload peak memory; compare gather_object vs broadcast/single-rank path and padded-all_reduce vs all-gather/scatter across increasing world_size",
+      "observed_metric": "collective time (all-reduce/all-gather) and per-rank peak memory scaling with world_size",
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:04.784130+00:00",
+        "cost": 0.01814
+      }
+    },
+    {
+      "leaf": "compile-cache-misconfig",
+      "category": "compilation",
+      "verify_kind": "microbench",
+      "reason": "This leaf is a single-process compilation-cache correctness/perf bug: the cache key omits a semantically-relevant factor (e.g. partitioning on/off, a config snapshot delta, or a codegen-affecting env var) so a graph compiled under setting A is silently reused under setting B — or an unhashable/identity-hashed key (CUDA Tensor into @lru_cache, or a tiny maxsize=N cache overflowing) causes false hits/misses. All of these are observable on a single device by toggling the config field across compiles and measuring compile-time / recompilation behavior; no multi-GPU or distributed scale is needed to trigger it. The existing leg3 route to gpt-perf (first-step/compile time) captures end-to-end recompilation cost but not the key-collision root cause, so a targeted microbench is preferable. Not routing to recipe because the mechanism reproduces deterministically at n=1.",
+      "recipe": "gpt-perf",
+      "config_hint": "first-step/compile time; torch.compile recompilation",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:12.067808+00:00",
+        "cost": 0.01893
+      }
+    },
+    {
+      "leaf": "config-toggle-perf-feature",
+      "category": "config-observability",
+      "verify_kind": "route-recipe",
+      "reason": "This leaf is about performance-affecting config flags whose defaults silently flip (store_true↔store_false), or knobs hardcoded ON, or args→dataclass name-mapping that toggles fusion/overlap/parallelism/precision/comm paths. The regression only materializes as a throughput/memory delta on realistic model configs where those fusion/overlap/parallel paths are actually exercised — i.e. multi-GPU/distributed or large-scale runs that trigger comm-overlap and parallelism codepaths. A single-op microbench can't reveal a silently-changed default because the impact is emergent across the full training/inference job and depends on the flag's effect on end-to-end scheduling. The right check is to run the existing perf CI recipe twice with the toggle in each state and diff throughput/peak-mem, confirming the default change is intentional and that a run that never sets the flag isn't silently rerouted.",
+      "recipe": "gpt-perf",
+      "config_hint": "config-gated regressions; run once with the feature flag at its OLD default and once at its NEW default (and once explicitly unset) — compare throughput and peak memory to detect silent path changes for jobs that never set the flag.",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:13.340258+00:00",
+        "cost": 0.01892
+      }
+    },
+    {
+      "leaf": "correctness-forces-slow-path",
+      "category": "kernel-efficiency",
+      "verify_kind": "microbench",
+      "reason": "This leaf is about a correctness/determinism opt-in branch swapping optimized fused kernels for reference paths, disabling flash-attention, forcing num_splits=1, dequantizing low-precision weights to wider dtype for stable matmul, or pinning matmuls to fp32 / disabling autocast. All of these manifest as single-op / single-module kernel-efficiency losses (Tensor Core underutilization, fused→unfused kernel, extra dequant) that are directly observable on one GPU without distribution. A single-device microbenchmark timing the affected op in both the fast (default) and the correctness-mode branch cleanly isolates the regression. This aligns with the existing leg3 route hint (per-module kernel microbench) but is best executed as a standalone microbench rather than a full-scale distributed recipe, since the mechanism does not require multi-card scale to appear.",
+      "recipe": "module_performance",
+      "config_hint": "per-module kernel microbench",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:13.036189+00:00",
+        "cost": 0.01905
+      }
+    },
+    {
+      "leaf": "cpu-affinity-numa",
+      "category": "parallelism-scheduling",
+      "verify_kind": "route-recipe",
+      "reason": "",
+      "recipe": "hybrid-perf",
+      "config_hint": "PP schedule/bubble; interleaved 1F1B",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:15.576464+00:00",
+        "cost": 0.01906
+      }
+    },
+    {
+      "leaf": "cudagraph-enablement",
+      "category": "compilation",
+      "verify_kind": "microbench",
+      "reason": "The core failure mode here is CUDA-graph *coverage loss*: an over-narrow gating predicate (decode-only assert, `training && grad_enabled`, or `cuda_graph_scope != 'full_iteration'`) silently routes prefill/mixed/chunked-prefill/frozen-layer steps to the eager path. This is observable single-GPU: run the same forward step under both a graphable-eligible mode (prefill / mixed / frozen) and a decode-only mode, and compare per-step latency plus a graph-capture/replay counter. If the eligible mode collapses to eager, its latency (and host-side launch overhead / CPU-launch count) will diverge sharply from the captured path — no multi-GPU or distributed scale is needed to surface the regression. The interleaved/lazy first-step capture cost is already covered by the leg3 gpt-perf compile-time recipe, so the microbench targets steady-state coverage rather than warmup.",
+      "recipe": "gpt-perf",
+      "config_hint": "first-step/compile time; torch.compile recompilation",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:13.894566+00:00",
+        "cost": 0.01904
+      }
+    },
+    {
+      "leaf": "cudagraph-incompatibility",
+      "category": "compilation",
+      "verify_kind": "microbench",
+      "reason": "The core mechanism here — CUDA graph capture silently breaking or falling back to eager when it encounters device-host sync or data-dependent output shapes (nonzero/masked_select, CPU-count indexing, dynamic routing) — is a single-GPU, single-process phenomenon. It does not require multi-card/distributed scale to reproduce: you can capture a graph over a small op sequence and directly observe whether capture succeeds, whether it silently falls back to eager, and the resulting per-step latency delta. This makes it microbenchmarkable rather than needing the gpt-perf recipe (which is better for the recompilation/first-step-compile-time facet already routed in leg3). The sizing/gating sub-mechanism (request-count vs token-count captured dim, zero-length padding misclassification) is also observable on one device by capturing at a fixed captured dimension and replaying with mismatched actual sizes to detect divergence/fallback.",
+      "recipe": "gpt-perf",
+      "config_hint": "first-step/compile time; torch.compile recompilation",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:13.815858+00:00",
+        "cost": 0.01889
+      }
+    },
+    {
+      "leaf": "custom-op-dispatch-overhead",
+      "category": "host-overhead",
+      "verify_kind": "microbench",
+      "reason": "此叶机制是纯 host 侧的 dispatch/launch 开销：把一大段 forward（GEMM + gated RMSNorm + gates + elementwise）包进单个不透明 custom op 阻断 torch.compile 融合，或用重量级 @torch.library.custom_op 装饰器/Python 间接层注册热路径小 op，都在每次调用付出额外 dispatch 边界。这类开销单卡即可复现——它是 CPU-bound 的每次调用固定成本，不依赖分布式/大规模，因此适合单机微基准直接对比“opaque custom op 包裹 vs 让编译器可见并融合”以及“custom_op decorator vs direct_register_custom_op”两条路径的 host 端 per-call 开销。leg3 路由到 gpt-perf 的建议偏向端到端 small-batch step time，但根因是单 op 级别的 dispatch 成本，微基准能更干净地隔离并量化。",
+      "recipe": "gpt-perf",
+      "config_hint": "CPU-bound launch overhead; small-batch step time",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:15.579556+00:00",
+        "cost": 0.01899
+      }
+    },
+    {
+      "leaf": "defensive-oversync",
+      "category": "concurrency-sync",
+      "verify_kind": "microbench",
+      "reason": "The core anti-pattern (a Python `assert`/`if` on a device tensor, or an unconditional full-device `synchronize()` after an async op inside a hot forward/step loop) forces a device→host sync every iteration. This stall is single-device observable: it does not require multi-GPU or distributed scale to manifest — the implicit sync serializes the launch queue and inflates per-step latency on one accelerator. A microbench that runs a representative hot loop with vs. without the offending sync-inducing statement isolates the regression cleanly. (The leg3 determinism-perf recipe would surface aggregate stalls but is heavier than needed and conflates multi-process ordering; for the leaf mechanism itself a single-device timer suffices. Distributed variants like p2p/all-gather over-sync could additionally use the recipe, but the defensive-assert / unconditional-synchronize core is best pinned here.)",
+      "recipe": "determinism-perf",
+      "config_hint": "stream/sync ordering; determinism harness exposes stalls",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:14.310753+00:00",
+        "cost": 0.0191
+      }
+    },
+    {
+      "leaf": "deferred-free-peak",
+      "category": "memory-management",
+      "verify_kind": "microbench",
+      "reason": "The core mechanisms here (two large buffers coexisting at peak because a live Python reference is held too long; pseudo-freeing a view via `.data` without asserting `._base is None`) are single-device, single-process phenomena. Peak allocator high-water-mark for a forward/backward of one decoder stack (or one projection + its input) is fully observable on one GPU by comparing allocator peak with vs. without the early-dereference / viewless-free. This does not need DP8 to manifest — the DP8 recipe (leg3) targets allocator fragmentation across ranks, which is a different, coarser signal that would mask this leaf's per-tensor lifetime bug. A microbench pinpoints the coexisting-buffer peak deterministically.",
+      "recipe": "gpt-perf-dp8",
+      "config_hint": "allocator/fragmentation; peak-mem under DP8",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:15.000818+00:00",
+        "cost": 0.01895
+      }
+    },
+    {
+      "leaf": "dma-access-order-relax",
+      "category": "kernel-efficiency",
+      "verify_kind": "microbench",
+      "reason": "The mechanisms here (host-side torch.cat/view before H2D serializing copy+transfer; hardcoded make_block_ptr load/store paths missing TMA/descriptor fast path; over-aggressive cache/eviction hints hurting DMA access order) are all single-device, single-op effects. They manifest as measurable per-kernel throughput/latency differences on one GPU without any distributed setup, so a standalone microbench isolating the copy+concat path and the memory-access kernel is the right verification tool. The leg3 route-recipe (module_performance / per-module kernel microbench) confirms the microbench granularity rather than needing multi-card CI.",
+      "recipe": "module_performance",
+      "config_hint": "per-module kernel microbench",
+      "observed_metric": null,
+      "microbench_target": "Time two variants side by side: (1) H2D staging — compare host-side concat+view-then-copy vs. per-tensor async H2D copies followed by device-side concat; (2) memory-access kernel — compare a make_block_ptr + tl.load/tl.store path (with and without .cg cache_modifier / evict_last eviction_policy) against a TMA/descriptor (make_tensor_descriptor) path, measuring effective DMA/copy bandwidth and kernel latency.",
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:14.487581+00:00",
+        "cost": 0.01911
+      }
+    },
+    {
+      "leaf": "dynamo-graph-break",
+      "category": "compilation",
+      "verify_kind": "microbench",
+      "reason": "A graph break from calling native/third-party kernels (aiter, flash_attn's apply_rotary, deepgemm, punica bgmv/sgmv) as plain functions inside the traced region, or from reading concrete Python-int shapes / .item()/hasattr/device-capability oracles, is a single-process, single-GPU phenomenon. It shows up deterministically at torch.compile time for one module and does not require multi-card/distributed scale to reproduce. The right verification is a microbenchmark that compiles a small module containing the suspect call and inspects/counts graph breaks (and measures the resulting first-step compile time), which is fully reproducible on one machine. It is verifiable now via torch._dynamo's explain/graph-break counting, so it is not 'not-verifiable-yet'; and because it's single-GPU it doesn't need the distributed route-recipe. The existing leg3 route to gpt-perf compile-time is a coarse aggregate signal — the microbench isolates the specific graph break, which is the actual mechanism here.",
+      "recipe": "gpt-perf",
+      "config_hint": "first-step/compile time; torch.compile recompilation",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:19.233165+00:00",
+        "cost": 0.01911
+      }
+    },
+    {
+      "leaf": "eager-error-string-build",
+      "category": "host-overhead",
+      "verify_kind": "microbench",
+      "reason": "This leaf is a pure host-side/CPU overhead pattern: an argument (f-string interpolation, expensive serialize like model_dump_json, or error-branch helper) is eagerly built before a gated log call checks its level, so cost is paid unconditionally. This is single-machine reproducible — no distributed/multi-GPU needed to observe it. A microbench timing the eager argument construction on a hot-path call (with logging disabled at DEBUG) directly exposes the wasted host time. The leg3 route-recipe suggestion (gpt-perf, CPU-bound launch overhead / small-batch step time) is really just symptomatic of this host overhead; the mechanism itself is cheaper and more precisely isolated with a microbench rather than a full perf-CI recipe.",
+      "recipe": "gpt-perf",
+      "config_hint": "CPU-bound launch overhead; small-batch step time",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:20.494326+00:00",
+        "cost": 0.01895
+      }
+    },
+    {
+      "leaf": "encoder-execution-mode",
+      "category": "inference-serving",
+      "verify_kind": "microbench",
+      "reason": "The first sub-mechanism (redundant encoder recompute per decode step) is the dominant single-device-observable pathology in this leaf: forward() unconditionally running the image/audio/text encoder each autoregressive step instead of caching it behind an `if encoder_hidden_states is None:` guard. This inflates per-step latency by a fixed encoder-forward cost that should be paid exactly once, and it reproduces deterministically on a single GPU without any distributed setup — you just need to compare N decode steps with vs. without the cache guard. The TP-sharding-a-ViT and cross-rank-encoder-execution sub-mechanisms genuinely need multi-rank collectives to manifest and are appropriately covered by the leg3 gpt-perf recipe route; this microbench targets the recompute-vs-cache axis that gpt-perf's decode-throughput proxy would only see indirectly. Concretely: time an encoder forward as the unit cost, then model prefill+K decode steps to show the guarded path amortizes it to 1x while the buggy path pays Kx.",
+      "recipe": "gpt-perf",
+      "config_hint": "decode throughput/latency (proxy via gpt-perf)",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:21.390396+00:00",
+        "cost": 0.01902
+      }
+    },
+    {
+      "leaf": "eplb-issues",
+      "category": "parallelism-scheduling",
+      "verify_kind": "route-recipe",
+      "reason": "EPLB (Expert Parallelism Load Balancing) 的回归本质是跨 EP rank 的专家负载均衡问题：无论是 hard-block guard 导致某些量化/后端/模型路径完全无法均衡，还是 determine_expert_map 的线性/连续放置让 grouped-expert 模型的热点专家组压垮单个 rank，其性能影响只有在**多卡多 EP rank + 真实 MoE 路由分布**下才会显现。单机微基准无法复现跨 rank 的负载倾斜与专家迁移收益，只能在分布式性能 CI 上以真实并行度跑通。故交给仓库方现有 recipe。",
+      "recipe": "hybrid-perf",
+      "config_hint": "PP schedule/bubble; interleaved 1F1B",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:23.280151+00:00",
+        "cost": 0.01897
+      }
+    },
+    {
+      "leaf": "failure-detection-gap",
+      "category": "config-observability",
+      "verify_kind": "not-verifiable-yet",
+      "reason": "This leaf is about failure-detection GAPS (missing timeouts on cross-process waits, admission checks returning bool that silently retry a never-schedulable request forever). The symptom is an unbounded hang/stall with no error surfaced — not a throughput/latency number. A microbench can't reliably reproduce this: the \"regression\" is the ABSENCE of a fail-fast path, and deterministically triggering it needs a dead peer/subprocess or a request whose KV blocks exceed total GPU blocks plus a way to observe \"hangs forever\" (which by definition has no bounded runtime to measure). The leg3 recipe (gpt-perf, config-gated) times a run with a feature toggled — it measures perf when things work, not liveness/deadlock when a peer dies or a request is permanently unschedulable, so route-recipe doesn't actually verify this either. Proper verification requires deadlock/liveness detection (watchdog + injected peer death / injected impossible-to-fit request asserting a timeout-or-error fires within N seconds), which isn't a performance-CI or timing microbench and isn't available with the current toolset. Recommend flagging for a dedicated fault-injection/liveness test rather than a perf benchmark.",
+      "recipe": "gpt-perf",
+      "config_hint": "config-gated regressions; run with feature toggled",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:21.964907+00:00",
+        "cost": 0.01812
+      }
+    },
+    {
+      "leaf": "fsdp-zero-pipeline-break",
+      "category": "parallelism-scheduling",
+      "verify_kind": "route-recipe",
+      "reason": "All three mechanisms in this leaf only manifest under an actual multi-stage pipeline-parallel (and typically FSDP-hybrid) deployment: (1) redundant full-size lm_head/vocab projection weights allocated on non-first/last PP ranks only waste memory when stages are split across ranks — measuring the effect requires the real PP rank layout; (2) hardcoded concurrency knobs forcing GPipe-style all-forward-then-all-backward create pipeline bubbles/idle GPUs that are only observable with multiple pipeline stages and microbatch scheduling across devices; (3) parameter-class-on-replicated-op interacts with the distributed sharding path. A single-GPU microbench cannot expose stage-specific replication or cross-stage bubble/serialization behavior, so this must go to the repo's existing multi-rank perf CI. The prior leg3 routing already points at the right recipe measuring PP schedule bubbles vs interleaved 1F1B.",
+      "recipe": "hybrid-perf",
+      "config_hint": "PP schedule/bubble; interleaved 1F1B",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:22.603573+00:00",
+        "cost": 0.0191
+      }
+    },
+    {
+      "leaf": "fused-backend-swap",
+      "category": "kernel-efficiency",
+      "verify_kind": "microbench",
+      "reason": "This leaf is about a fused/optimized kernel silently being bypassed in favor of a reference/native path (forward_cuda→forward_native, unoverridden apply_weights falling back to base GEMM, or JIT-fused elementwise becoming a no-op). The effect is per-op/per-module kernel efficiency loss that manifests on a single device — no multi-GPU or distributed scale is needed to observe it. A single-machine microbench that times the module's forward against the intended fused kernel vs. the reference path will directly expose the regression (fused path never reached = latency matches reference, no speedup). Route-recipe (module_performance) is heavier than necessary since the divergence is visible at the single-op granularity.",
+      "recipe": "module_performance",
+      "config_hint": "per-module kernel microbench",
+      "observed_metric": null,
+      "microbench_target": "The overridden forward()/apply_weights of the affected linear/MLP module (e.g. quantized/int8 linear layer's apply_weights, or the fused elementwise epilogue such as bias+gelu / bias+dropout+add / swiglu). Time end-to-end module forward latency and, if separable, the epilogue-fusion op alone; compare observed latency against the reference/native path to detect whether the fused kernel is actually being dispatched.",
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:22.722076+00:00",
+        "cost": 0.01903
+      }
+    },
+    {
+      "leaf": "gil-held-blocking-call",
+      "category": "concurrency-sync",
+      "verify_kind": "microbench",
+      "reason": "This leaf (gil-held-blocking-call) manifests on a single machine and single process: the pathology is that a CPU-bound call (tokenization, chat-template render, multimodal decode, PIL→tensor mapping) runs directly inside an async def coroutine, or a pybind11 entry point holds the GIL during a blocking/native call. Neither requires multi-GPU or distributed scale to reproduce — the observable is event-loop stall / serialized concurrent callers on one host. A microbench that drives concurrent async requests through the offending code path and measures tail latency / effective concurrency under a CPU-bound preprocessing load exposes the head-of-line blocking directly. The leg3 determinism-perf recipe targets stream/sync ordering stalls, which is a different (device-side ordering) mechanism and does not capture Python-level GIL/event-loop serialization; so route-recipe is not the right fit here.",
+      "recipe": "determinism-perf",
+      "config_hint": "stream/sync ordering; determinism harness exposes stalls",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:22.687260+00:00",
+        "cost": 0.019
+      }
+    },
+    {
+      "leaf": "host-scalar-loop-work",
+      "category": "concurrency-sync",
+      "verify_kind": "microbench",
+      "reason": "机制核心是单机、单步热循环里对 GPU 标量的逐元素访问（.tolist()/索引 CUDA 张量取标量、host 端从 Python list 物化小张量再隐式拷贝到 device）——每次访问都是一次隐式 device→host 同步，属单进程即可复现的 host 同步开销，不依赖多卡或大规模。leg3 的 determinism-perf recipe 只是把 stall 暴露出来，真正定位这类 per-iter 同步应做单机微基准，直接对比\"逐标量循环 + host 物化\" vs \"device 上批量分配/一次性拷贝\"的 host 侧壁钟时间与同步次数。",
+      "recipe": "determinism-perf",
+      "config_hint": "stream/sync ordering; determinism harness exposes stalls",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:24.666927+00:00",
+        "cost": 0.01912
+      }
+    },
+    {
+      "leaf": "ipc-transport-overhead",
+      "category": "collective-comm",
+      "verify_kind": "microbench",
+      "reason": "This leaf's core anti-pattern (serializing whole objects incl. large tensor/ndarray buffers through pickle/msgpack default paths on the IPC hot path, missing protocol-5 zero-copy out-of-band buffers) is a per-call host-side serialization cost that reproduces on a single machine. We can time serialize+deserialize round-trips of a payload containing large buffers, comparing the default full-memcpy path against a protocol-5 buffer_callback zero-copy path — no multi-rank/distributed setup needed. (The object-collective all_gather_object variant that requires actual multi-rank device exchange is better handled by leg3's gpt-perf recipe; the pure serialization overhead is the single-machine-verifiable core.)",
+      "recipe": "gpt-perf",
+      "config_hint": "multi-node TP/PP; watch all-reduce/all-gather time",
+      "observed_metric": null,
+      "microbench_target": "Serialize + deserialize round-trip of a Python object containing one or more large contiguous tensor/ndarray buffers: (a) baseline path pickle.dumps(obj, HIGHEST_PROTOCOL) / pickle.loads, and (b) zero-copy path pickle.dumps(obj, protocol=5, buffer_callback=collect) with out-of-band backing buffers passed to loads. Measure per-call latency and count of buffer bytes copied.",
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:22.175365+00:00",
+        "cost": 0.01913
+      }
+    },
+    {
+      "leaf": "kernel-config-tuning",
+      "category": "kernel-efficiency",
+      "verify_kind": "microbench",
+      "reason": "This leaf is about a single kernel silently falling back to generic default tile params when no device/shape-specific tuned config JSON matches (missing file, or filename-key mismatch like 'H200' vs 'NVIDIA_H200_NVL'). The performance delta is a per-kernel-launch efficiency effect that manifests on a single GPU for a fixed (E, N, K, dtype, device) point — no multi-GPU or distributed scale is needed to observe it. So it's cleanly reproducible via a single-device microbench that times the fused-MoE (or targeted) kernel under two configs: the tuned-config launch params vs the fallback default/heuristic tile params, keyed on the actual canonical device_name. The regression appears as a throughput/latency gap between these two launch parametrizations, plus a check that the config-lookup key resolves to a real file.",
+      "recipe": "module_performance",
+      "config_hint": "per-module kernel microbench",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:26.456680+00:00",
+        "cost": 0.01907
+      }
+    },
+    {
+      "leaf": "kernel-fusion",
+      "category": "kernel-efficiency",
+      "verify_kind": "microbench",
+      "reason": "The listed anti-patterns (elementwise activation chains, split/concat RoPE, per-expert GEMM loops) all manifest at the single-op / single-module level as excess kernel launches and intermediate-tensor memory traffic. These are reproducible on one GPU without distributed scale — you time the fused vs. unfused variant and compare kernel-launch count / latency / peak activation memory. The existing leg3 route (module_performance / per-module kernel microbench) is consistent with this, but the verification granularity is a standalone microbench rather than a full CI recipe, since no multi-card or large-scale condition is needed to surface the regression.",
+      "recipe": "module_performance",
+      "config_hint": "per-module kernel microbench",
+      "observed_metric": null,
+      "microbench_target": "Abstract elementwise activation chain and fused-RoPE targets: (1) an activation-fusion candidate such as x -> relu -> square -> (optional bias-add) executed both as separate eager ops and as a single fused/compiled callable; (2) a rotary-embedding apply on an unsplit QKV tensor, compared as split->rotate-Q/K->concat vs. a single fused rotary kernel. Measure end-to-end forward (and optionally backward) wall time plus number of launched kernels.",
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:27.995636+00:00",
+        "cost": 0.01903
+      }
+    },
+    {
+      "leaf": "kernel-noop-skip",
+      "category": "kernel-efficiency",
+      "verify_kind": "microbench",
+      "reason": "This leaf is a per-op, single-device inefficiency: an unconditional identity/no-op transform that materializes tensors or launches wasted kernels on the hot path (e.g. repeat_interleave with ratio==1, torch.zeros scratch that gets fully overwritten, or logits*scale with scale==1.0). These regressions manifest as extra kernel launches / memset / an extra tensor materialization per forward, all fully observable on one GPU by timing the guarded vs. unguarded code path. No distribution/multi-card scale is needed to see the delta, so route-recipe is overkill; and the mechanism is concrete enough to bench directly, so it is verifiable now. Compare an unconditionally-applied transform against a gated version (skip when ratio==1 / scale==1.0 / count==0, or torch.empty instead of torch.zeros).",
+      "recipe": "module_performance",
+      "config_hint": "per-module kernel microbench",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:28.493574+00:00",
+        "cost": 0.01905
+      }
+    },
+    {
+      "leaf": "kernel-occupancy-redesign",
+      "category": "kernel-efficiency",
+      "verify_kind": "microbench",
+      "reason": "这个叶的机制全部是单 kernel、单 block/grid 层面的效率问题：标量 per-element load/store（应为 128-bit 向量化访问）、把 runtime 标量参数放进内层循环导致分支阻碍常量折叠（应模板/constexpr 特化）、以及固定/硬编码的 launch geometry 与 tile size。这些都是 memory-bound elementwise/norm/cache kernel 的占用率与访存效率退化，在单卡上即可稳定复现——退化直接体现为达成带宽下降或 kernel latency 上升，无需多卡/分布式规模。因此适合写单机微基准，逐 kernel 计时并对比不同 hidden_size/dtype 下的实测带宽。leg3 的 module_performance recipe 只是每模块聚合视角，粒度太粗，无法隔离单 kernel 的向量化/特化回归，故不路由 recipe。",
+      "recipe": "module_performance",
+      "config_hint": "per-module kernel microbench",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:31.500245+00:00",
+        "cost": 0.01903
+      }
+    },
+    {
+      "leaf": "kv-cache-capacity",
+      "category": "inference-serving",
+      "verify_kind": "microbench",
+      "reason": "The regression is a pure host-side arithmetic/sizing bug in the KV-cache capacity estimator, not a runtime kernel or comms behavior. Both anti-patterns (the hardcoded `2 *` for K+V ignoring an MLA/single-latent-vector branch, and sizing per-rank buffers from the full `num_layers` under PP instead of the per-stage subset) manifest as a wrong computed block byte-size and a wrong number of allocatable KV blocks. This is deterministically reproducible on a single host by exercising the block-size / num-blocks computation function directly with representative configs (MLA vs non-MLA, pp_size=1 vs >1). No multi-GPU run is needed to observe the doubled per-block estimate or the pp_size over-allocation factor — the leg3 gpt-perf decode-throughput proxy would only show a downstream symptom (fewer concurrent sequences / OOM) and is far noisier and more expensive than directly checking the sizing math. A microbench that computes allocatable blocks and compares MLA vs 2*K,V and per-stage vs full-layer sizing exposes the factor-of-2 / factor-of-pp_size error cleanly.",
+      "recipe": "gpt-perf",
+      "config_hint": "decode throughput/latency (proxy via gpt-perf)",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:29.511834+00:00",
+        "cost": 0.01895
+      }
+    },
+    {
+      "leaf": "low-precision-state",
+      "category": "memory-footprint",
+      "verify_kind": "microbench",
+      "reason": "The core mechanisms here are single-device observable memory-footprint issues, not distributed-scale phenomena. Two are locally reproducible: (1) sub-modules built via build_module/init outside the fp8 init context stay in high precision — this can be verified on a single device by initializing a module both inside and outside a mock fp8 init context and comparing the parameter dtype / byte footprint; (2) unconditional upcast of a [tokens, vocab] logits tensor to fp32 before cross-entropy materializes a large fp32 tensor whose peak memory is measurable single-node. Both manifest as peak-memory deltas without needing multi-GPU. The DP8 recipe (leg3) is better suited for the aggregate OOM-threshold view; the per-mechanism fp8-vs-fp32 memory delta is cleanest as a microbench. Optimizer-state precision variants are likewise a single-tensor allocation concern.",
+      "recipe": "gpt-perf-dp8",
+      "config_hint": "activation/param memory; OOM threshold",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:30.122597+00:00",
+        "cost": 0.01902
+      }
+    },
+    {
+      "leaf": "memory-leak-unpruned-state",
+      "category": "memory-management",
+      "verify_kind": "microbench",
+      "reason": "The mechanism at this leaf is single-process memory growth: (1) per-request state dicts/sets/deques keyed by request id that only get pruned on the happy completion path, so abort/error/TP-mismatch paths leak entries; (2) @lru_cache on a bound method retaining `self` and its buffers up to maxsize; (3) process_weights_after_loading recomputing/repacking a param into a new tensor while the original stays referenced. All three are host-side or single-device object/tensor retention that manifests on one process without distribution — you can drive it by looping request lifecycles (including abort/error paths) or invoking weight-loading once, then measure resident/peak memory and the size of the tracking container. This is distinct from the leg3 DP8 allocator-fragmentation route (which needs multi-rank scale to show fragmentation-driven peak-mem), so it should NOT be folded into that recipe. A microbench that simulates N request enqueue+abort cycles (never hitting the normal completion path) and asserts the tracked container / RSS stays bounded is the cleanest reproduction.",
+      "recipe": "gpt-perf-dp8",
+      "config_hint": "allocator/fragmentation; peak-mem under DP8",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:30.248818+00:00",
+        "cost": 0.01893
+      }
+    },
+    {
+      "leaf": "meta-device-init",
+      "category": "memory-footprint",
+      "verify_kind": "microbench",
+      "reason": "The core anti-pattern (init module with real tensors on CPU/default device then `.cuda()`, throwaway sub-modules with real allocations, or unconditional materialization of meta params to real GPU allocs) causes a transient host/device peak-memory spike that is fully observable on a single device. You can construct a representative module both ways—(a) real-alloc-then-move / dummy-overwrite / unconditional to_empty, vs (b) meta-device / no-alloc context init—and measure peak CPU RSS and peak CUDA allocated bytes during construction. This does not require distributed scale to reproduce; the memory-footprint regression manifests per-rank at init time. The leg3 recipe route (gpt-perf-dp8) is better suited for the downstream OOM-threshold signal, but the root mechanism itself is single-device reproducible, so a microbench gives a tighter, cheaper signal.",
+      "recipe": "gpt-perf-dp8",
+      "config_hint": "activation/param memory; OOM threshold",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:30.668967+00:00",
+        "cost": 0.01896
+      }
+    },
+    {
+      "leaf": "mismatched-collective-config",
+      "category": "collective-comm",
+      "verify_kind": "route-recipe",
+      "reason": "This leaf's anti-patterns (deriving rank/world_size from per-node LOCAL_RANK/device_count, rank-local data-dependent guards around collectives, and iterating rank-varying containers when issuing collectives) only manifest as regressions — deadlocks, colliding ranks, too-small world size, or mismatched collective ordering — under genuine multi-node / multi-rank distributed execution. A single-machine microbench cannot reproduce cross-node rank collision or the divergent-participation deadlock that requires >1 node with differing local state. Route to the existing multi-node perf CI recipe so distributed collective timing regressions are caught in the correct topology.",
+      "recipe": "gpt-perf",
+      "config_hint": "multi-node TP/PP; watch all-reduce/all-gather/reduce-scatter time and detect hangs; assert global RANK/WORLD_SIZE consistency across nodes",
+      "observed_metric": "collective (all-reduce/all-gather) latency and hang/deadlock detection",
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:29.015824+00:00",
+        "cost": 0.01758
+      }
+    },
+    {
+      "leaf": "missing-comm-overlap",
+      "category": "collective-comm",
+      "verify_kind": "route-recipe",
+      "reason": "This leaf is about collective-communication overlap regressions: async collectives (distributed-optimizer param all-gather via _all_gather_base/gather_model_params, checkpoint-load all_gather) failing to interleave with compute, or version-guards/asserts hard-disabling an overlap path for certain config combos (MXFP8 param AG, interleaved schedule overlap_grad_reduce, MLA linears missing tp_comm_buffer_name). The regression only manifests when real collectives run across multiple ranks/nodes — a single-process microbench cannot exercise cross-rank all-gather/all-reduce overlap with compute, since there is no genuine communication traffic to hide behind computation. The signal (comm time not being hidden, exposed all-reduce/all-gather latency on the critical path) requires a distributed TP/PP topology at scale. Hand off to the repo's existing performance CI recipe, watching all-reduce/all-gather time and per-iter step time to detect lost overlap.",
+      "recipe": "gpt-perf",
+      "config_hint": "multi-node TP/PP; watch all-reduce/all-gather time",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:32.734895+00:00",
+        "cost": 0.01901
+      }
+    },
+    {
+      "leaf": "offload-management",
+      "category": "memory-footprint",
+      "verify_kind": "microbench",
+      "reason": "",
+      "recipe": "gpt-perf-dp8",
+      "config_hint": "activation/param memory; OOM threshold",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:34.664042+00:00",
+        "cost": 0.0189
+      }
+    },
+    {
+      "leaf": "one-time-setup-on-hot-path",
+      "category": "host-overhead",
+      "verify_kind": "microbench",
+      "reason": "This leaf covers per-call setup that should have been hoisted to import/__init__: version-string parsing via package metadata, import-machinery/entry_point scanning inside a try/except-import placed in a hot forward function, and rebuilding derived collections/tensors each iteration. All three are pure host-side (CPU) costs that manifest per-forward/per-call on a single process — no distributed/multi-GPU scale is needed to observe them. A single-machine microbenchmark that times the hot function with vs. without the setup hoisted directly isolates the overhead. (The leg3 route-recipe suggestion targets small-batch step time where launch overhead dominates, which is a coarser proxy; a direct microbench pins the per-call cost more precisely, so microbench is preferred here.)",
+      "recipe": "gpt-perf",
+      "config_hint": "CPU-bound launch overhead; small-batch step time",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:35.948214+00:00",
+        "cost": 0.01888
+      }
+    },
+    {
+      "leaf": "pipeline-stage-imbalance",
+      "category": "parallelism-scheduling",
+      "verify_kind": "route-recipe",
+      "reason": "Pipeline-stage-imbalance only manifests as a throughput/bubble regression under an actual multi-stage pipeline-parallel run: the overloaded final/first stage (from remainder dumping or ignoring embedding/loss/MTP layers) stalls all other stages, so the effect scales with pp_size and the interleaved-1F1B schedule and cannot be reproduced in a single-process microbench. The partition math itself is deterministic and could be unit-tested, but the *performance* regression (bubble growth, end-to-end throughput drop) requires the distributed PP schedule to be exercised. Route to the existing multi-stage perf recipe that measures PP bubble/schedule efficiency.",
+      "recipe": "hybrid-perf",
+      "config_hint": "PP schedule/bubble; interleaved 1F1B; sweep num_layers not divisible by pp_size (e.g. num_layers=33, pp_size=4/8) and configs where embedding+loss/lm_head+MTP fall on end stages, to expose the overloaded-stage bottleneck via per-stage timing and bubble fraction.",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:34.945671+00:00",
+        "cost": 0.01906
+      }
+    },
+    {
+      "leaf": "prefill-decode-kernel-split",
+      "category": "inference-serving",
+      "verify_kind": "microbench",
+      "reason": "",
+      "recipe": "gpt-perf",
+      "config_hint": "decode throughput/latency (proxy via gpt-perf)",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:36.724543+00:00",
+        "cost": 0.019
+      }
+    },
+    {
+      "leaf": "prefix-state-caching",
+      "category": "inference-serving",
+      "verify_kind": "microbench",
+      "reason": "The core anti-pattern here (config guard force-disabling prefix caching, or a broken cache membership/recency lookup) is observable on a single host without distributed setup: the regression manifests as prefix KV blocks being recomputed instead of reused across steps. This shows up in per-request decode/prefill latency and prefix-cache hit-rate on one GPU, so a single-node microbench replaying a shared-prefix workload can detect it directly. The leg3 recipe (gpt-perf) is a good coarse proxy for aggregate decode throughput, but it measures end-to-end throughput rather than isolating whether cached prefixes are actually reused; a targeted microbench that (a) issues two requests sharing a long common prefix and (b) measures the second request's time-to-first-token and prefix-cache-hit count is the sharper signal for this specific leaf. Not route-recipe because no multi-card/large-scale is required to trigger recompute-on-cache-hit; not-verifiable is unwarranted since hit-rate + TTFT are directly measurable single-node.",
+      "recipe": "gpt-perf",
+      "config_hint": "decode throughput/latency (proxy via gpt-perf)",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:37.776409+00:00",
+        "cost": 0.01894
+      }
+    },
+    {
+      "leaf": "process-launch-overhead",
+      "category": "io-startup",
+      "verify_kind": "microbench",
+      "reason": "这些反模式的核心开销都源自单进程/单机可复现的启动成本：spawn 强制子进程重新 import 重型栈（torch/engine），fork 大内存父进程触发 COW 页拷贝，以及 O(N^2) 逐对探针进程的创建成本。这些都可在单机上用微基准直接测量——无需分布式规模即可显现每次进程启动的墙钟时间与内存放大。虽然 leg3 路由到 gpt-perf recipe 可测端到端 time-to-first-step，但 recipe 会把进程启动开销和真正的分布式初始化混在一起，难以归因；单机微基准能干净隔离“每次 launch 的固定开销”这一叶机制。P2P 逐对探针的 O(N^2) 行为在多卡下才有 N，但单个探针进程的创建+group init 成本仍可单机计时并按 N^2 外推。",
+      "recipe": "gpt-perf",
+      "config_hint": "dataloader/ckpt startup; time-to-first-step",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:39.939223+00:00",
+        "cost": 0.01891
+      }
+    },
+    {
+      "leaf": "profiling-accounting-fix",
+      "category": "config-observability",
+      "verify_kind": "microbench",
+      "reason": "This leaf is a memory-accounting/observability bug: the KV-cache sizing derives from a memory snapshot delta captured at the wrong moment (peak = init_free - end_free) or conflates torch vs non-torch memory (free_pre_profile - mem_get_info()[0]). The failure mode is deterministic and single-GPU reproducible — it manifests as a wrong computed peak/non-torch number relative to the true torch allocator peak, independent of scale or distribution. So it doesn't need the multi-GPU gpt-perf recipe; instead we assert the accounting against ground truth on one device. We drive a synthetic profile_run that allocates a known N bytes, and compare the code's computed peak/non-torch value against torch's own peak-allocated counter and against mem_get_info snapshots taken in a controlled order. The observable regression is a divergence (double-count / dropped baseline / snapshot-before-alloc) between the reported cache-sizing memory and the true torch allocation peak. Note leg3's route-recipe applies to the config-gated end-to-end throughput view, but the root accounting error itself is best pinned with a deterministic single-machine memory-accounting microbench rather than a noisy perf recipe.",
+      "recipe": "gpt-perf",
+      "config_hint": "config-gated regressions; run with feature toggled",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:38.434157+00:00",
+        "cost": 0.01908
+      }
+    },
+    {
+      "leaf": "quadratic-python-structure",
+      "category": "host-overhead",
+      "verify_kind": "microbench",
+      "reason": "This leaf is pure Python host-side algorithmic complexity: a per-step O(n) scan/rebuild/hash that compounds to O(n^2) over a run (e.g. `for c in candidates: if c.matches(...)`, `[r for r in running if r not in stopped]`, `hash(tuple(input_ids))` recomputed on the whole growing sequence). This is entirely CPU-bound and deterministic on a single machine — it needs no GPU, no distributed setup, and no large-scale infra to manifest. The signature is a superlinear rise in per-step host time as the collection/sequence length n grows, which a single-process microbench can isolate cleanly by measuring per-step wall-clock latency at increasing n and checking for O(n^2) scaling. Routing to the distributed gpt-perf recipe would bury this small-batch host overhead under launch/kernel noise, so a targeted microbench is the right call.",
+      "recipe": "gpt-perf",
+      "config_hint": "CPU-bound launch overhead; small-batch step time",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:38.916698+00:00",
+        "cost": 0.019
+      }
+    },
+    {
+      "leaf": "rank-placement-locality",
+      "category": "collective-comm",
+      "verify_kind": "route-recipe",
+      "reason": "This leaf is about how global ranks map to physical nodes/GPUs and how TP/EP/PP process groups are laid out relative to intra-node NVLink vs inter-node links. Every failure mode here — interleaving ranks across nodes from unsorted worker lists, forcing everything onto cuda:0, or a suboptimal rank-layout order string — only manifests as a regression at multi-node / multi-GPU scale where the difference between NVLink-local and cross-node collectives dominates. A single-process microbench cannot exercise process-group construction, per-rank device placement, or inter-node link topology, so it can't reproduce the locality regression. Hand off to the existing distributed perf recipe (gpt-perf, multi-node TP/PP) and watch the collective (all-reduce/all-gather) timing, which directly reflects whether groups span slow links. Aligns with the existing leg3 routing.",
+      "recipe": "gpt-perf",
+      "config_hint": "multi-node TP/PP (>=2 nodes, full intra-node GPU count) to expose rank-to-node interleaving and group locality; compare all-reduce/all-gather collective time and per-GPU memory balance",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:38.852902+00:00",
+        "cost": 0.01909
+      }
+    },
+    {
+      "leaf": "redundant-buffer-copy",
+      "category": "memory-management",
+      "verify_kind": "microbench",
+      "reason": "This leaf covers per-op redundant allocations (out-of-place elementwise where in-place is safe, unconditional .contiguous()/.clone()/.float(), CPU-then-.to(device)). These are all single-op, single-device mechanisms: the extra full-size intermediate buffer and its allocation/copy cost show up on one GPU without any distributed context. So a microbench that times the op variant pair (out-of-place vs in-place) and measures peak allocated memory + latency is sufficient to confirm the regression. The existing leg3 route (gpt-perf-dp8, allocator/fragmentation, peak-mem under DP8) targets aggregate allocator fragmentation at scale, which is a different, emergent symptom — the root-cause redundant copy is directly observable single-machine and should be verified here rather than deferred to the DP8 recipe.",
+      "recipe": "gpt-perf-dp8",
+      "config_hint": "allocator/fragmentation; peak-mem under DP8",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:42.305747+00:00",
+        "cost": 0.0192
+      }
+    },
+    {
+      "leaf": "redundant-collective",
+      "category": "collective-comm",
+      "verify_kind": "route-recipe",
+      "reason": "This leaf's mechanism (unguarded/redundant collectives that degenerate into world-size-spanning ops, or aux-loss reductions issued per-microbatch instead of per optimizer step) only produces observable regression when there are ≥2 partitions across a real process group. On a single device the collective is a genuine no-op and the redundant-collective cost is invisible — so a single-machine microbench cannot expose the world-size scaling or the grad-accumulation multiplier effect. This must run on the existing multi-node TP/PP perf CI (gpt-perf) and be judged by the collective time/count, matching the leg3 routing suggestion.",
+      "recipe": "gpt-perf",
+      "config_hint": "multi-node TP/PP enabled (world_size > 1); vary sequence_parallel / expert_parallel_size to hit both single-partition and multi-partition cases; set gradient-accumulation/microbatch > 1 to expose per-microbatch reduction scaling",
+      "observed_metric": "all-reduce/all-gather/reduce-scatter time and collective invocation count per optimizer step",
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:41.155384+00:00",
+        "cost": 0.01803
+      }
+    },
+    {
+      "leaf": "redundant-hot-path-work",
+      "category": "host-overhead",
+      "verify_kind": "microbench",
+      "reason": "This leaf is about wasted work on the host hot path: computing a heavy op (e.g. log_softmax/fp32 cast) over the full [seq_len × vocab] tensor before selecting the few rows actually needed, or rebuilding derived Python objects / deep-copying config dataclasses per forward, or running expensive string/stack-walking setup before a guard that skips it. All of these manifest at single-process, single-GPU (even CPU) scale as pure per-call overhead — no distributed/multi-node behavior is required to expose the redundant compute. So it is directly reproducible with a targeted microbench comparing \"full-tensor math then select\" vs \"select then math\" (and analogously per-iter object rebuild vs cached), which isolates the regression far more cleanly than the leg3 gpt-perf recipe (whose CPU-launch-overhead framing would bury this signal in end-to-end step time).",
+      "recipe": "gpt-perf",
+      "config_hint": "CPU-bound launch overhead; small-batch step time",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:42.704406+00:00",
+        "cost": 0.01892
+      }
+    },
+    {
+      "leaf": "redundant-load-startup-work",
+      "category": "io-startup",
+      "verify_kind": "microbench",
+      "reason": "The core mechanisms here (unconditional weight init at module construction, building a full unpartitioned master tensor before scatter) are single-process/single-rank observable costs: they consume host+device time and peak memory during module construction, independent of how many ranks run. You can build a linear/embedding layer with a parametrized init flag and time construction + measure transient peak memory for the wasted init and full-tensor-then-shard path — no distributed setup needed. (The third mechanism, every-rank-redundant-read of replicated shards, is genuinely a distributed/collective-IO effect and would belong to the leg3 gpt-perf recipe; but the dominant, directly reproducible cost is the local redundant init/allocation, so microbench is the right primary route.)",
+      "recipe": "gpt-perf",
+      "config_hint": "dataloader/ckpt startup; time-to-first-step",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:45.249644+00:00",
+        "cost": 0.01884
+      }
+    },
+    {
+      "leaf": "reshard-tradeoff",
+      "category": "parallelism-scheduling",
+      "verify_kind": "route-recipe",
+      "reason": "The reshard-tradeoff antipatterns (unconditional ZeRO-3 reshard_after_forward, full-domain vs. hybrid intra/inter-instance sharding, per-submodule gather/repartition hooks) only manifest as regressions at multi-node/multi-GPU DP+CP scale where the extra all-gather/reduce-scatter collective sizes and re-all-gather-before-backward comm overhead dominate the hot path. Collective sizing and sharding-domain effects are inherently distributed and cannot be reproduced or attributed on a single device; a microbench of the local gather op would not capture the cross-instance comm tradeoff. Route to the repo's existing multi-node performance CI, consistent with the leg3 hybrid-perf recipe.",
+      "recipe": "hybrid-perf",
+      "config_hint": "Compare full-domain sharding (ZeRO-3, reshard_after_forward=True across full DP+CP) vs. hybrid sharding (intra-instance shard + inter-instance all-reduce), with reshard_after_forward toggled; measure at scale where memory headroom does NOT require full resharding.",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:43.656748+00:00",
+        "cost": 0.01902
+      }
+    },
+    {
+      "leaf": "scheduler-work-distribution",
+      "category": "parallelism-scheduling",
+      "verify_kind": "microbench",
+      "reason": "The core anti-patterns here (head-of-line blocking via `break` vs `continue` in the scheduler's waiting/queue loop, and greedy bin-packing that mis-seeds per-worker counters or sorts ascending instead of descending for LPT) are all single-process, deterministic control-flow/data-structure bugs in the scheduler. They manifest as reduced per-step scheduled-request count and skewed per-worker load distribution, both observable on one machine with a synthetic request/worker set — no multi-rank or distributed scale is required to reproduce. This distinguishes it from the leg3 PP-bubble/1F1B routing, which genuinely needs a multi-stage pipeline; the scheduling-decision logic itself does not. A microbench that drives the scheduling loop with a crafted mix of schedulable + unschedulable requests exposes the starvation directly. (Note: the truncated \"passing a scalar sized for ...\" variant may need reclassification once fully specified.)",
+      "recipe": "hybrid-perf",
+      "config_hint": "PP schedule/bubble; interleaved 1F1B",
+      "observed_metric": null,
+      "microbench_target": "The scheduler step / batch-formation function that iterates the waiting queue and selects the runnable batch, plus the load-balancer routing function that assigns shards/requests to workers. Time and measure decision quality per invocation (abstract in-process call; no target-repo import).",
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:45.523770+00:00",
+        "cost": 0.01895
+      }
+    },
+    {
+      "leaf": "serial-io",
+      "category": "io-startup",
+      "verify_kind": "microbench",
+      "reason": "The core anti-pattern here — sequential blocking iteration over I/O work items (files/prefixes/RPCs) in a plain for-loop vs. concurrent submission (ThreadPoolExecutor / batched call) — is observable on a single host without distribution. You can materialize N synthetic files/objects and compare a serial `for f in files: read/stream(f)` loop against a thread-pool/batched variant; the wall-clock gap grows with per-item latency and item count, exposing the serialization directly. The single-privileged-rank / gather-scatter partitioning sub-mechanism is genuinely multi-rank and belongs to the route-recipe path, but the dominant, most common leaf mechanism (serial per-file/per-RPC I/O during startup) is cheaply and deterministically reproducible in a microbench, so this is the right primary classification. The route hint (gpt-perf, time-to-first-step) remains valid as a complementary large-scale check for the rank-serialization variant.",
+      "recipe": "gpt-perf",
+      "config_hint": "dataloader/ckpt startup; time-to-first-step",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:46.649259+00:00",
+        "cost": 0.019
+      }
+    },
+    {
+      "leaf": "shared-mutable-state-contention",
+      "category": "concurrency-sync",
+      "verify_kind": "microbench",
+      "reason": "The core mechanisms of this leaf are single-machine reproducible: (1) a shared-mutable config field being clobbered across submodules is a functional/logic race observable on one process with two consumers; (2) cross-stream tensor sharing without proper event/stream synchronization manifests as torn/stale reads observable on a single GPU with two CUDA streams. Both surface as either wrong results (non-determinism) or added host/device sync stalls that a microbench can time. This does not require multi-node/large scale; the leg3 determinism-perf recipe covers the ordering-harness angle, but the underlying contention/torn-read + sync-stall cost is best isolated in a targeted single-machine microbench that alternates a synchronized vs. unsynchronized cross-stream handoff and measures the added latency (and validates data correctness). The lock-free MPSC/SPMC queue missing-barrier case is weak-memory-order dependent and largely not reproducible on x86 TSO, so it's carved out as the not-fully-verifiable residual — but the CUDA cross-stream and shared-config paths are directly benchable here.",
+      "recipe": "determinism-perf",
+      "config_hint": "stream/sync ordering; determinism harness exposes stalls",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:47.964570+00:00",
+        "cost": 0.01896
+      }
+    },
+    {
+      "leaf": "shared-workspace-reuse",
+      "category": "memory-management",
+      "verify_kind": "microbench",
+      "reason": "This leaf's mechanism — allocating fresh scratch/intermediate tensors (torch.empty / at::empty for workspaces, MoE caches, pinned inputs) or reconstructing expensive stateful objects (RotaryEmbedding cos/sin cache, CUDA Streams, static graph buffers) inside a per-call hot path instead of reusing a persistent buffer — is fundamentally observable on a single device. The regression manifests as extra per-step allocator churn/alloc-free traffic and object construction cost that repeats every forward/backward, all of which reproduce deterministically at batch size 1 on one GPU without needing distributed scale. The leg3 DP8 recipe targets allocator fragmentation as an aggregate peak-mem effect, but the root per-call overhead (allocation latency + redundant cache builds) is best isolated and attributed with a tight single-op microbench rather than a large-scale run, so route-recipe would only capture the emergent symptom, not the mechanism. Hence microbench is the right primary verification; the DP8 recipe remains a complementary cross-check for the fragmentation angle.",
+      "recipe": "gpt-perf-dp8",
+      "config_hint": "allocator/fragmentation; peak-mem under DP8",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:47.726559+00:00",
+        "cost": 0.01907
+      }
+    },
+    {
+      "leaf": "skip-saved-tensor-backward",
+      "category": "memory-footprint",
+      "verify_kind": "microbench",
+      "reason": "This leaf is about a single autograd.Function forward unconditionally saving activations for backward regardless of whether grads are needed (no requires_grad gating; gating on module.training instead of torch.is_grad_enabled()). The failure mode — retained/redundant saved tensors inflating peak activation memory — is fully observable on a single device by measuring peak memory of one forward pass (and one fwd+bwd) under different autograd states. It does not require multi-GPU/distributed scale to manifest; a single-op/single-module memory delta reproduces it. The routed leg3 recipe (gpt-perf-dp8, OOM threshold) is a downstream integration confirmation, but the root mechanism is cheaply isolated in a microbench comparing saved-tensor footprint across grad states.",
+      "recipe": "gpt-perf-dp8",
+      "config_hint": "activation/param memory; OOM threshold",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:47.469215+00:00",
+        "cost": 0.019
+      }
+    },
+    {
+      "leaf": "slow-fs-path",
+      "category": "io-startup",
+      "verify_kind": "microbench",
+      "reason": "The core anti-pattern (per-sample open()+seek()+readinto() with buffering=0 vs mmap/page-cache path) manifests as excess syscalls per __getitem__ on a single machine — no distributed scale needed to observe it. A single-host microbench that times repeated per-element reads under both the unbuffered per-call syscall path and the mmap/cached path directly exposes the regression (syscall count / per-sample read latency). The pinned-bounce-buffer variant is likewise a single-transfer copy overhead that is timeable locally. The leg3 gpt-perf recipe (time-to-first-step) only captures the aggregate startup effect, whereas the mechanism is isolatable per-op, so microbench is the tighter verifier.",
+      "recipe": "gpt-perf",
+      "config_hint": "dataloader/ckpt startup; time-to-first-step",
+      "observed_metric": null,
+      "microbench_target": "Per-sample dataset read path: repeated get(idx) that issues open()+seek()+readinto() with buffering=0, compared against an mmap-backed / page-cache-backed read of the same bytes; measure wall time and syscall count per fetch (e.g. via strace/perf counter). Secondary target: single host->device tensor transfer via pinned bounce buffer vs direct path.",
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:51.420687+00:00",
+        "cost": 0.01897
+      }
+    },
+    {
+      "leaf": "sm-margin-reservation",
+      "category": "concurrency-sync",
+      "verify_kind": "route-recipe",
+      "reason": "这个叶的回归本质是\"未给并发通信预留 SM\"（margin 未生效/被硬编码为满卡）。其性能影响只有在 compute kernel 与 collective/comm kernel *真正并发重叠* 时才显现——即 norm/GEMM 与 overlapped communication 争抢 SM。单机单卡微基准无法制造这种通信重叠场景，无法暴露 SM 争用导致的 contention，因此不能用 microbench 稳定复现。需要多卡/分布式、开启 comm-compute overlap 的大规模运行，交给仓库现有性能 CI recipe。选用 determinism-perf recipe（stream/sync ordering）因为 SM-margin 预留问题会表现为并发流之间的 stall/ordering 变化，该 harness 已能暴露 stalls，是最贴近的现成验证路径。fp8/inference 路径遗漏的分支需在 recipe 中显式覆盖对应 kernel path 才能捕获。",
+      "recipe": "determinism-perf",
+      "config_hint": "stream/sync ordering; determinism harness exposes stalls",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:51.759562+00:00",
+        "cost": 0.01903
+      }
+    },
+    {
+      "leaf": "sparse-layer-update",
+      "category": "inference-serving",
+      "verify_kind": "route-recipe",
+      "reason": "The described mechanisms are fundamentally about distributed/multi-param collective behavior: (1) a zero-token/empty-batch passthrough (`output = input`) causing a Parameter to receive no gradient means its per-parameter grad-reduce / reduce-scatter hook never fires — this is a correctness+perf hazard that only manifests under a real distributed data/expert-parallel run where the reduce-scatter collective schedule is expected to be filled; a single-process microbench cannot exercise the missing collective. (2) Optimizer state built over ALL param_groups without filtering requires_grad=False bloats master/Adam states — the memory footprint that matters (and the sparse-layer routing skew) shows up at serving scale across ranks. Since this is an inference-serving leaf with expert/MLP routing behavior, the existing decode throughput/latency proxy is the right lens. Reuse the existing leg3 routing: run the repo's own perf CI recipe rather than fabricating a single-node bench that would miss the collective-hook and cross-rank optimizer-state effects.",
+      "recipe": "gpt-perf",
+      "config_hint": "decode throughput/latency (proxy via gpt-perf)",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:51.417777+00:00",
+        "cost": 0.01895
+      }
+    },
+    {
+      "leaf": "speculative-decoding",
+      "category": "inference-serving",
+      "verify_kind": "microbench",
+      "reason": "The core regression here — forcing q_len=1 in the decode attention call or scoring proposals via batch-expansion into (k+1) single-token requests — is a single-GPU kernel-efficiency / launch-overhead problem that manifests on one device. The fast path being lost (uniform multi-token spec attention / MQA scorer vs. batch_size×proposal_len single-token decodes) is directly observable by timing the attention/scorer forward pass on one GPU with a fixed batch. Distributed scale is not required to see the per-call cost difference, so a microbench is more targeted than the gpt-perf recipe. Route-recipe would only surface this diluted end-to-end; the inline synchronous proposal (host-sync) piece is also single-device observable via latency. Hence microbench over route-recipe.",
+      "recipe": "gpt-perf",
+      "config_hint": "decode throughput/latency (proxy via gpt-perf)",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:54.791062+00:00",
+        "cost": 0.019
+      }
+    },
+    {
+      "leaf": "spin-wait-hang",
+      "category": "concurrency-sync",
+      "verify_kind": "microbench",
+      "reason": "This leaf's core symptom — a busy-wait poll loop with no idle backoff burning a full CPU core per worker, and re-invoking a no-op step() while requests are blocked on an external event — is observable on a single machine. The waste manifests as high CPU utilization / wall-clock overhead in the idle-wait state, and as excess step() invocations that do no real work. Both are measurable single-process without distributed scale: instrument a producer/consumer (or scheduler.step()) with a controllably-delayed external event and measure CPU-seconds burned and number of no-op iterations during the wait window. The stale-read-outside-lock race is trickier to catch deterministically, but the spin-burn and redundant-step aspects are the dominant, reliably reproducible signals. Note: the leg3 determinism-perf recipe targets stream/sync ORDERING stalls (a distributed determinism concern); it does not directly measure per-core CPU burn of the spin loop, so a single-machine microbench is the more direct verifier for the burn/no-op-step mechanism here.",
+      "recipe": "determinism-perf",
+      "config_hint": "stream/sync ordering; determinism harness exposes stalls",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:53.767687+00:00",
+        "cost": 0.01894
+      }
+    },
+    {
+      "leaf": "stream-serialization",
+      "category": "concurrency-sync",
+      "verify_kind": "microbench",
+      "reason": "Both anti-patterns are single-GPU, single-process observable: a kernel launched on stream 0 / a pool stream instead of the current stream breaks overlap with surrounding work, and a per-step synchronous H2D copy (tensor.to(device), torch.tensor(list, device=...), or GPU-tensor advanced-indexed by a Python list) forces a blocking cudaStreamSynchronize that stalls CPU pre-launch. These serialization stalls show up on one card as reduced overlap and elevated per-step latency / host-side stall time, so a microbench that times a producer-then-consumer kernel pair (correct current-stream vs. wrong stream) and a hot-loop with vs. without the sync H2D copy will expose them directly. No distributed/multi-card scale is required, so route-recipe is unnecessary; the existing leg3 determinism-perf harness can corroborate the stall signal but is not needed to reproduce it. The wrong-stream case is the trickier one — timing alone can miss it, so the bench must measure overlap (concurrent vs. serialized execution) and/or use CUDA events to detect the missing ordering/overlap relationship.",
+      "recipe": "determinism-perf",
+      "config_hint": "stream/sync ordering; determinism harness exposes stalls",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:53.401931+00:00",
+        "cost": 0.01907
+      }
+    },
+    {
+      "leaf": "suboptimal-kernel-gate",
+      "category": "kernel-efficiency",
+      "verify_kind": "microbench",
+      "reason": "这些反模式的共同后果是\"快内核路径被静默绕过\"——import-fallback 从触发失败的同一模块重新导入快内核符号、把 fused 分支门控在拼错/未定义的能力 flag 上、或硬编码了上游已重命名的符号名。它们不需要多卡或大规模就能显现：单机上直接对目标 op 计时，快路径实际生效与回落到慢路径之间会有明确的吞吐/延迟差异（外加可断言 capability flag 是否被真正置位）。因此适合单机微基准，而非分布式 recipe。leg3 的 module_performance 路由粒度太粗，无法定位到具体 op 的快/慢路径切换，per-op 微基准更直接。",
+      "recipe": "module_performance",
+      "config_hint": "per-module kernel microbench",
+      "observed_metric": null,
+      "microbench_target": "被能力 flag 门控的 fused/fast kernel 与其纯 eager/慢路径回退实现（例如 fused RoPE apply、flash-attention 变长/定长入口）的对比计时；同时探测该模块暴露的 HAVE_* capability flag 布尔值，断言 flag 命名与实际导入符号一致",
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:56.990484+00:00",
+        "cost": 0.01901
+      }
+    },
+    {
+      "leaf": "transient-realloc-spike",
+      "category": "memory-management",
+      "verify_kind": "microbench",
+      "reason": "The mechanism (torch.cat weight-shard merge, KV-cat growth, master->working copy via .to(device)) is a single-tensor / single-op transient allocation spike that manifests on one GPU independent of parallelism. Peak-memory delta from a coexisting second full-size buffer is deterministically reproducible on a single device by measuring allocator peak around the suspect op, so no DP8/distributed scale is needed. The existing leg3 DP8 recipe targets allocator fragmentation under DP scale, which is a different (aggregate/fragmentation) signal than this leaf's per-op 2x transient spike; the transient spike itself is best isolated in a microbench.",
+      "recipe": "gpt-perf-dp8",
+      "config_hint": "allocator/fragmentation; peak-mem under DP8",
+      "observed_metric": null,
+      "microbench_target": "Wrap the suspect allocation pattern and read torch.cuda.max_memory_allocated() delta around it: (a) torch.cat([w_gate, v_gate], dim=-1) shard-merge; (b) per-step KV growth via torch.cat((past_kv, cur_kv), dim=seq_dim); (c) master->working copy dst.copy_(cpu_fp32_master.to(gpu)). Reset peak stats before, synchronize, then compare peak-alloc against the sum of source-tensor bytes to detect the transient 2x buffer.",
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:54.814975+00:00",
+        "cost": 0.01903
+      }
+    },
+    {
+      "leaf": "unfused-transpose-copy",
+      "category": "kernel-efficiency",
+      "verify_kind": "microbench",
+      "reason": "",
+      "recipe": "module_performance",
+      "config_hint": "per-module kernel microbench",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:55.472045+00:00",
+        "cost": 0.01908
+      }
+    },
+    {
+      "leaf": "uvm-managed-pagefault",
+      "category": "memory-management",
+      "verify_kind": "microbench",
+      "reason": "The core failure mode — cudaMallocManaged-backed hot buffer (e.g. KV-cache) silently oversubscribing VRAM and page-fault-migrating over PCIe on the critical path — is fundamentally a single-device allocator/residency effect, not a distributed one. It is directly reproducible on one GPU by allocating a managed buffer sized to exceed device VRAM and touching it in the access pattern of the hot path, then measuring the latency cliff vs a device-resident (cudaMalloc / pinned pool) baseline. The DP8 recipe (leg3) measures aggregate peak-mem/fragmentation under sharding and would confound the fault-migration signal with collective/comm noise; oversubscription-triggered PCIe faulting shows up cleanly and cheaply single-node, so a microbench is the sharper verifier. cudaMemAdvise hints (SetPreferredLocation/SetAccessedBy) do not guarantee residency, so the microbench must actively verify pages stay on-device (fault counter / migration bytes) rather than trust the hint.",
+      "recipe": "gpt-perf-dp8",
+      "config_hint": "allocator/fragmentation; peak-mem under DP8",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:55.778745+00:00",
+        "cost": 0.01911
+      }
+    },
+    {
+      "leaf": "warmup-shape-gap",
+      "category": "compilation",
+      "verify_kind": "microbench",
+      "reason": "The mechanism is shape-driven JIT/torch.compile recompilation on the first real step because the warmup routine derives shapes incorrectly (e.g. seq_len // TP_size, or missing the requires_grad=True recompute pass / speculative multi-token query length). The core failure — \"warmed shape never matches hot-path shape → recompile\" — is a single-device, single-process phenomenon: recompilation is triggered by guard mismatch on tensor shapes/attributes, not by actual multi-GPU communication. You can reproduce it on one GPU by (1) running a warmup pass with the \"wrong\" shape (seq divided by TP size, or forward-only requires_grad=False, or query len 1), then (2) submitting the true hot-path shape and detecting whether a recompile occurs / measuring the first-step latency spike. No distributed launch is needed to observe the guard miss and the compile-time penalty; the TP division and speculative token count can be simulated as plain shape parameters. Route-recipe (gpt-perf first-step/compile time) is the right *fleet-scale* signal, but the leaf itself is cheaply and deterministically verifiable single-machine, which gives a faster, more targeted regression check.",
+      "recipe": "gpt-perf",
+      "config_hint": "first-step/compile time; torch.compile recompilation",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:59.729794+00:00",
+        "cost": 0.01893
+      }
+    },
+    {
+      "leaf": "wasted-compilation-work",
+      "category": "compilation",
+      "verify_kind": "microbench",
+      "reason": "The core anti-patterns here are single-process, import-/call-time compilation overheads that manifest without any distributed setup: (1) an eager `load_inline`/nvcc JIT build inside an unconditional import-time branch, (2) a `@torch.compile`/Triton-jitted closure defined inside a per-call method so no cache hit ever occurs, and (3) constexpr-specialization on context-varying scalars (token counts, seq lens, strides) forcing repeated recompiles. All three are directly observable on a single device by measuring the wall-clock time attributable to compilation vs. steady-state execution. A microbench can isolate first-import/first-call cost and per-call recompilation by varying the specializing scalar and checking whether compile time recurs. The leg3 gpt-perf 'first-step/compile time' recipe would also surface it, but it is not needed — the phenomenon reproduces standalone, so a targeted microbench gives cleaner attribution.",
+      "recipe": "gpt-perf",
+      "config_hint": "first-step/compile time; torch.compile recompilation",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:59.568339+00:00",
+        "cost": 0.01888
+      }
+    },
+    {
+      "leaf": "weight-load-strategy",
+      "category": "io-startup",
+      "verify_kind": "microbench",
+      "reason": "The anti-pattern (eagerly materializing all params into an intermediate dict / running tee'd filter passes, and non-mmap pickle/np.load of the whole checkpoint) manifests as excess host peak RAM and slower startup on a single machine — no distributed/multi-GPU scale is needed to observe it. A single-process microbench can compare eager buffering vs lazy/streaming, and non-mmap torch.load vs mmap-safetensors slicing, measuring host peak RSS and load latency. (The leg3 gpt-perf recipe measures end-to-end time-to-first-step, but that conflates dataloader + distributed init and won't isolate the host-RAM doubling from weight buffering — hence a targeted microbench is preferred here.)",
+      "recipe": "gpt-perf",
+      "config_hint": "dataloader/ckpt startup; time-to-first-step",
+      "observed_metric": null,
+      "microbench_target": "Checkpoint-to-loader path: (a) building a full name->tensor dict / itertools.tee multi-pass filtering over the param iterator vs a single-pass lazy generator that yields+releases each tensor; (b) eager torch.load(.bin, pickle) / np.load(no mmap) vs mmap-backed lazy per-tensor slicing (safetensors/np.load(mmap_mode='r')). Measure while feeding a stub loader that consumes the iterator.",
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:02:59.242901+00:00",
+        "cost": 0.01891
+      }
+    },
+    {
+      "leaf": "weight-transfer-sync",
+      "category": "io-startup",
+      "verify_kind": "route-recipe",
+      "reason": "weight-transfer-sync 属于权重在设备/进程间传输后的同步开销，本质上需要多进程/多卡（或 host↔device 的分布式 checkpoint/权重广播）场景才会显现。这类同步瓶颈依赖真实的集合通信拓扑与 IO 启动路径，单机微基准无法忠实复现同步语义与规模效应，因此交由仓库现有性能 CI recipe 在真实分布式配置下测量。既有 leg3 路由建议也指向 gpt-perf 的 startup/time-to-first-step 度量，与该叶（io-startup 大类下的权重传输同步）契合。",
+      "recipe": "gpt-perf",
+      "config_hint": "dataloader/ckpt startup; time-to-first-step（关注权重传输/广播后的同步等待）",
+      "observed_metric": "time-to-first-step / startup latency（含权重传输后的同步阻塞时间）",
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:03:00.207114+00:00",
+        "cost": 0.01603
+      }
+    },
+    {
+      "leaf": "wrong-index-dtype-hang",
+      "category": "config-observability",
+      "verify_kind": "route-recipe",
+      "reason": "The failure mode only manifests under pipeline-parallel (multi-stage/multi-rank) execution: a dropped dtype-reconciliation line lets an op silently promote fp16→fp32, which then desyncs the fixed-dtype send/recv buffers across stages and causes a point-to-point/collective deadlock (hang). This is inherently a distributed, cross-stage phenomenon — a single-device microbench of the elementwise op would at most show a wrong output dtype, not the hang, and cannot reproduce the send/recv buffer mismatch. So it must be exercised by the existing multi-GPU perf CI recipe with the relevant config toggled, matching the leg3 routing suggestion (config-gated, run with feature on/off to expose the dtype-promotion regression).",
+      "recipe": "gpt-perf",
+      "config_hint": "config-gated regressions; run with pipeline-parallel enabled and the mixed-precision (fp16/fp32) path toggled on vs off; watch for cross-stage send/recv hang or timeout",
+      "observed_metric": null,
+      "microbench_target": null,
+      "microbench_input_desc": null,
+      "provenance": {
+        "model": "us.anthropic.claude-opus-4-8",
+        "prompt": "leaf_verification.v1",
+        "ts": "2026-07-23T00:03:00.314790+00:00",
+        "cost": 0.01901
+      }
+    }
+  ]
+}

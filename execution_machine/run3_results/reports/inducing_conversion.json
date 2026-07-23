@@ -1,0 +1,21 @@
+{
+  "dev_regfix_total": 148,
+  "traceable_direct_or_likely": 136,
+  "converted": 135,
+  "conversion_rate_of_traceable": 0.993,
+  "fail_resolve_sha": 1,
+  "fail_git_resolve": 0,
+  "converted_composition": {
+    "detectability": {
+      "medium": 102,
+      "high": 9,
+      "low": 24
+    },
+    "repo": {
+      "Megatron-LM": 26,
+      "vllm": 102,
+      "DeepSpeed": 3,
+      "TransformerEngine": 4
+    }
+  }
+}

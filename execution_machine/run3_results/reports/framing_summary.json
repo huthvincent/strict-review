@@ -1,0 +1,66 @@
+{
+  "overlap": 116,
+  "overlap_rate": 1.0,
+  "mcnemar": {
+    "detector_v1": {
+      "b": 6,
+      "c": 22,
+      "chi2": 8.036,
+      "p_cc": 0.0046,
+      "p_exact": 0.0037,
+      "n": 116,
+      "concordant_hit": 4,
+      "concordant_miss": 84,
+      "inducing_easier": false
+    },
+    "baseline_megatron": {
+      "b": 9,
+      "c": 30,
+      "chi2": 10.256,
+      "p_cc": 0.0014,
+      "p_exact": 0.0011,
+      "n": 116,
+      "concordant_hit": 4,
+      "concordant_miss": 73,
+      "inducing_easier": false
+    },
+    "baseline_generic": {
+      "b": 14,
+      "c": 24,
+      "chi2": 2.132,
+      "p_cc": 0.1443,
+      "p_exact": 0.1433,
+      "n": 116,
+      "concordant_hit": 9,
+      "concordant_miss": 69,
+      "inducing_easier": false
+    },
+    "baseline_keyword": {
+      "b": 0,
+      "c": 0,
+      "chi2": 0.0,
+      "p_cc": 1.0,
+      "p_exact": 1.0,
+      "n": 116,
+      "concordant_hit": 0,
+      "concordant_miss": 116,
+      "inducing_easier": false
+    },
+    "baseline_xfamily": {
+      "b": 8,
+      "c": 13,
+      "chi2": 0.762,
+      "p_cc": 0.3827,
+      "p_exact": 0.3833,
+      "n": 116,
+      "concordant_hit": 1,
+      "concordant_miss": 94,
+      "inducing_easier": false
+    }
+  },
+  "sig_selectors": [],
+  "consistent": false,
+  "adopt_corrected_as_primary": false,
+  "cache_only": true,
+  "misses": []
+}
