@@ -188,12 +188,12 @@ save(fig, "f7_evidence")
 # ---------------- F8 项目进度条 ----------------
 fig, ax = plt.subplots(figsize=(9, 4.0))
 phases = [
-    ("想法与论证", "否决「万类分类器」\n定下三条腿", GREEN, "已完成"),
-    ("Phase 0 试点", "48 张人工金标卡\n校准闸门 recall=1.0", GREEN, "已完成"),
-    ("数据集线", "5,016 卡 / 622 对\nv0.2 冻结", GREEN, "已完成"),
-    ("检测器线 RUN2", "8 Stage 考完\n整体胜 · 北极星负", GREEN, "已完成"),
-    ("消融定向", "leg3 独撑召回\nv2 方向已明", GREEN, "已完成"),
-    ("v2 产品化", "leg3 主干重设计\n人工核验进行中", AMBER, "进行中"),
+    ("Phase 0+数据集", "校准闸门 recall=1.0\n5,016 卡/622 对冻结", GREEN, "已完成"),
+    ("RUN2: v1", "v1 整体胜北极星负\n消融指路 leg3", GREEN, "已完成"),
+    ("RUN3: v2.0", "哑火判负→尸检\n四处实现缺陷", GREEN, "已完成"),
+    ("本地验证环", "40 题 A/B 证配方\n宪章 7.6-7.8 立", GREEN, "已完成"),
+    ("RUN4: v2.1", "77.3% 召回\n工作点 0.6 定档", GREEN, "已完成"),
+    ("v2.2+产品化", "误报根治/deep 强化\n前瞻滚动/接 CI", AMBER, "进行中"),
 ]
 n = len(phases)
 for i, (name, sub, color, status) in enumerate(phases):
@@ -210,7 +210,7 @@ for i, (name, sub, color, status) in enumerate(phases):
         ax.add_patch(FancyArrowPatch((x + 1.38, 1.75), (x + 1.52, 1.75), arrowstyle="-|>",
                      mutation_scale=11, color=GRAY, lw=1.1))
 ax.set_xlim(-0.2, n * 1.55); ax.set_ylim(0.3, 2.75); ax.axis("off")
-ax.set_title("项目走到哪了（2026-07-19）", fontsize=14.5, color=INK, pad=10)
+ax.set_title("项目走到哪了（2026-07-22）", fontsize=14.5, color=INK, pad=10)
 save(fig, "f8_roadmap")
 
 # ---------------- F9 对决成绩 ----------------
@@ -236,5 +236,29 @@ ax.spines[["top", "right"]].set_visible(False)
 ax.legend(loc="upper left", fontsize=9, frameon=False)
 ax.set_title("同一张密封考卷上的对决（RUN2 实测，判分 κ=0.926）", fontsize=14, color=INK, pad=10)
 save(fig, "f9_showdown")
+
+# ---------------- F10 检测器演进 ----------------
+fig, ax = plt.subplots(figsize=(9, 4.4))
+vers = ["v1\n(RUN2 冻结)", "v2.0\n(RUN3 哑火)", "v2.1 冻结口径\n(RUN4)", "v2.1 @展示门0.6\n(现役工作点)"]
+overall = [21.3, 1.3, 77.3, 43.3]
+pair = [13.3, 0.0, 26.7, 13.3]
+fpr = [12.0, 0.0, 23.0, 2.0]
+x = np.arange(len(vers)); w = 0.26
+b1 = ax.bar(x - w, overall, w, color=BLUE, label="整体召回@2")
+b2 = ax.bar(x, pair, w, color=AMBER, label="引入对召回@2")
+b3 = ax.bar(x + w, fpr, w, color=RED_L, label="误报率（越低越好）")
+for bars in (b1, b2, b3):
+    for b in bars:
+        ax.text(b.get_x() + b.get_width()/2, b.get_height() + 0.8, f"{b.get_height():.1f}",
+                ha="center", va="bottom", fontsize=8.5, color=INK)
+ax.axhline(10.0, color=GRAY, lw=1.0, ls=":")
+ax.text(-0.42, 11.0, "产品误报红线 10%", fontsize=8.5, color=GRAY)
+ax.set_xticks(x); ax.set_xticklabels(vers, fontsize=9.5)
+ax.set_ylim(0, 88); ax.set_ylabel("%", fontsize=10)
+ax.spines[["top", "right"]].set_visible(False)
+ax.legend(loc="upper left", fontsize=9, frameon=False)
+ax.set_title("检测器四个版本在同一张 dev 练习卷上（RUN2/3/4 实测）", fontsize=14, color=INK, pad=10)
+save(fig, "f10_evolution")
 print("ALL DONE")
+
 
